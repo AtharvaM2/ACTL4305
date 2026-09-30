@@ -428,3 +428,87 @@ ncd_change <- data[!is.na(PrevClaims) & PrevNCD > 0 & PrevNCD < 6,
                    .(PolicyYears = .N, MeanNCDChange = round(mean(NCDLevel - PrevNCD), 2)),
                    keyby = .(PrevClaims = pmin(PrevClaims, 2))]
 print(ncd_change)
+
+#9. Portfolio Persistence (cohort attrition) -------------------------------
+cohort_survival <- data[, .(PolicyYears = .N), by = .(FirstYear, Year)]
+cohort_survival[, YearsSinceEntry := Year - FirstYear]
+
+# E.g., policies entering 2023: how many remain in 2024, 2025, 2026?
+# If 80% drop out by year 3, renewal-book pricing has different risk profile
+
+#10. NCD Effectiveness  ---------------------------------------------------
+data[, FutureClaimNb := shift(ClaimNb, -1, type = "lead"), by = PolicyID]
+
+# Among policies with NCDLevel = 6 this year, what's frequency NEXT year?
+# vs. NCDLevel = 0?
+
+ncd_predictive <- data[!is.na(FutureClaimNb), .(
+  NextYearFreq = sum(FutureClaimNb) / .N
+), by = NCDLevel][order(NCDLevel)]
+
+# If NCDLevel=6 has lower NextYearFreq, NCD is predictive
+# If not, NCD is just a discount with no risk signal
+
+#11. Reinsurance  ----------------------------------------------------------
+
+data[ClaimAmount > 50000, .(Count = .N, TotalCost = sum(ClaimAmount), RetentionCost = 50000 * .N)]
+# Do any claims cross a reinsurance retention (e.g., >$50k is reinsured)?
+# If so, your severity model for Task 1 should exclude them or down-weight them
+# (your loaded premium calculation needs to reflect actual insurer cost, not incurred)
+
+#12. Risk Zone Analysis ----------------------------------------------------
+interaction_check <- data[, .(
+  Frequency = sum(ClaimNb) / .N,
+  Claims = sum(ClaimNb)
+), by = .(RiskZone, PaymentFrequency)]
+print(interaction_check)
+
+#13. Rention Rate by Year --------------------------------------------------
+# Add a minimum y-intercept line to show the 50% threshold
+retention_plot <- ggplot(retention_long, aes(YearsSinceEntry, SurvivalRate, colour = factor(FirstYear), group = FirstYear)) +
+  geom_hline(yintercept = 65, linetype = "dashed", colour = "grey50", alpha = 0.5) +  # Reference line
+  geom_line(size = 1) + geom_point(size = 2) +
+  scale_y_continuous(limits = c(65, 105), labels = scales::percent_format(scale = 1)) +
+  scale_x_continuous(breaks = 0:3) +
+  labs(title = "Cohort Survival: Policy Retention by Entry Year",
+       x = "Years Since Entry", y = "Retention Rate (%)", colour = "Entry Year",
+       subtitle = "Shows how many policies remain after N years") +
+  theme_minimal()
+
+print(retention_plot)
+
+#14. Chang in Driver Age Distribution for Renewal Periods ------------------
+# Define age bands
+age_band_cuts <- c(0, 24, 34, 44, 54, 64, 74, Inf)
+age_band_labels <- c("<25", "25-34", "35-44", "45-54", "55-64", "65-74", "75+")
+
+# Function to create age distribution
+create_age_dist <- function(df, dataset_name) {
+  df[, AgeGroup := cut(DriverAge, breaks = age_band_cuts, labels = age_band_labels, right = FALSE)]
+  df[, .N, by = AgeGroup][, `:=`(Dataset = dataset_name, Pct = round(100 * N / sum(N), 1))]
+}
+
+# Create distributions for all three datasets
+mix_shift <- rbind(
+  create_age_dist(data[Year == 2026, .(DriverAge)], "2026 Training")[, .(AgeGroup, Dataset, N, Pct)],
+  create_age_dist(copy(renewal_book_2027)[, .(DriverAge)], "2027 Renewal")[, .(AgeGroup, Dataset, N, Pct)],
+  create_age_dist(copy(renewal_book_2028)[, .(DriverAge)], "2028 Renewal")[, .(AgeGroup, Dataset, N, Pct)]
+)
+
+# Order factor for proper plotting
+mix_shift[, AgeGroup := factor(AgeGroup, levels = age_band_labels, ordered = TRUE)]
+
+# Plot - histogram format
+ggplot(mix_shift, aes(x = AgeGroup, y = Pct, fill = Dataset)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.8) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  scale_fill_manual(values = c("2026 Training" = "#1f77b4", "2027 Renewal" = "#ff7f0e", "2028 Renewal" = "#2ca02c")) +
+  labs(title = "Portfolio Mix Shift: Driver Age Distribution",
+       x = "Age Band", y = "% of Policies", fill = NULL) +
+  theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
+
+#15. New Business Premium ----------------------------------------------
+renewal_book_2027[, .(
+  MeanPremium = mean(Premium_2026),
+  N = .N
+), by = TenureYears]
