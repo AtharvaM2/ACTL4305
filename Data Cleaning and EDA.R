@@ -50,7 +50,7 @@ claims_levels <- rbindlist(lapply(cat_cols, function(v) {
 }))
 print(claims_levels)
 
-# 3. Data cleaning ----------------------------------------------------------
+# 3a. Data cleaning Claims Dataset  -----------------------------------------
 data <- copy(claims_history_2023_2026)
 num_cols <- c("DriverAge", "YearsLicensed", "VehAge", "VehValue")
 data[, (num_cols) := lapply(.SD, as.numeric), .SDcols = num_cols]
@@ -250,6 +250,95 @@ reconciliation <- data.table(
 print(reconciliation)
 cat("\nData quality log:\n")
 print(issue_log[, .(ID, Issue, Variable, RowsAffected)])
+
+# 3b. Clean renewal books 2027 and 2028 ----------------------------------------
+# Define canonical category levels (from claims history cleaning)
+canonical <- list(
+  VehicleType = c("Sedan", "Hatch", "SUV", "Ute", "Sports"),
+  RiskZone = c("A_Metro", "B_InnerRegional", "C_OuterRegional", "D_Rural", "E_RemoteRural"),
+  AnnualKms = c("Low", "Medium", "High"),
+  GaragingLocation = c("Garage", "Carport", "Street"),
+  VehicleUse = c("Private", "Private_Business"),
+  PaymentFrequency = c("Annual", "Monthly"))
+
+clean_renewal_book <- function(renewal_data, year_name) {
+  
+  data_clean <- copy(renewal_data)
+  
+  # Convert numeric columns
+  num_cols <- c("DriverAge", "YearsLicensed", "VehAge", "VehValue")
+  data_clean[, (num_cols) := lapply(.SD, as.numeric), .SDcols = num_cols]
+  
+  # Standardise category labels
+  for (v in names(canonical)) {
+    if (!(v %in% names(data_clean))) next
+    
+    before <- data_clean[[v]]
+    key <- tolower(trimws(before))
+    if (v == "VehicleType") key[key == "sport"] <- "sports"
+    after <- canonical[[v]][match(key, tolower(canonical[[v]]))]
+    bad <- !is.na(before) & is.na(after)
+    
+    if (any(bad)) {
+      stop(sprintf("Unrecognised labels in %s: %s", v, paste(unique(before[bad]), collapse = ", ")))
+    }
+    
+    data_clean[, (v) := after]
+  }
+  
+  # Check for invalid values
+  bad_age <- which(!is.na(data_clean$DriverAge) & (data_clean$DriverAge < 17 | data_clean$DriverAge > 100))
+  bad_veh <- which(!is.na(data_clean$VehAge) & data_clean$VehAge < 0)
+  bad_exc <- which(!is.na(data_clean$ExcessChosen) & !(data_clean$ExcessChosen %in% c(500, 750, 1000)))
+  
+  if (length(bad_age) > 0) data_clean[bad_age, DriverAge := NA_real_]
+  if (length(bad_veh) > 0) data_clean[bad_veh, VehAge := NA_real_]
+  if (length(bad_exc) > 0) data_clean[bad_exc, ExcessChosen := NA_real_]
+  
+  # Convert to factors
+  data_clean[, `:=`(
+    VehicleType = factor(VehicleType, canonical$VehicleType),
+    RiskZone = factor(RiskZone, canonical$RiskZone),
+    AnnualKms = factor(AnnualKms, canonical$AnnualKms),
+    GaragingLocation = factor(GaragingLocation, canonical$GaragingLocation),
+    VehicleUse = factor(VehicleUse, canonical$VehicleUse),
+    PaymentFrequency = factor(PaymentFrequency, canonical$PaymentFrequency),
+    ExcessChosen = as.integer(ExcessChosen),
+    DriverAge = as.integer(DriverAge),
+    VehAge = as.integer(VehAge)
+  )]
+  
+  # Validation checks
+  checks <- list(
+    "Duplicate PolicyID" = data_clean[, sum(duplicated(PolicyID))],
+    "Invalid DriverAge" = length(which(!is.na(data_clean$DriverAge) & 
+                                         (data_clean$DriverAge < 17 | data_clean$DriverAge > 100))),
+    "Invalid VehAge" = length(which(!is.na(data_clean$VehAge) & data_clean$VehAge < 0)),
+    "Invalid ExcessChosen" = length(which(!is.na(data_clean$ExcessChosen) & 
+                                            !(data_clean$ExcessChosen %in% c(500, 750, 1000)))),
+    "NCDLevel outside 0–6" = data_clean[NCDLevel < 0 | NCDLevel > 6, .N],
+    "TenureYears < 0" = data_clean[TenureYears < 0, .N]
+  )
+  
+  failures <- data.table(Check = names(checks), Failures = unlist(checks))
+  
+  if (failures[, any(Failures > 0)]) {
+    cat(sprintf("\n%s Validation Issues:\n", year_name))
+    print(failures[Failures > 0])
+  } else {
+    cat(sprintf("\n%s: All validation checks passed ✓\n", year_name))
+  }
+  
+  cat(sprintf("  %d policies × %d columns\n", nrow(data_clean), ncol(data_clean)))
+  
+  return(data_clean)
+}
+
+# Clean both renewal books
+renewal_book_2027 <- clean_renewal_book(renewal_book_2027, "2027 Renewal Book")
+renewal_book_2028 <- clean_renewal_book(renewal_book_2028, "2028 Renewal Book")
+
+cat("\n✓ Renewal books cleaned and ready for modelling\n")
 
 # 4. Exploratory data analysis ---------------------------------------------
 missingness_table <- rbindlist(lapply(flag_cols, function(v) {
