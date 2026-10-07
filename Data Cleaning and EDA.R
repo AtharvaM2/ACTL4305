@@ -552,8 +552,23 @@ interaction_check <- data[, .(
 ), by = .(RiskZone, PaymentFrequency)]
 print(interaction_check)
 
-#13. Rention Rate by Year --------------------------------------------------
+#13. Retention Rate by Year --------------------------------------------------
 # Add a minimum y-intercept line to show the 50% threshold
+cohort_survival <- data[
+  , .(PolicyYears = .N),
+  by = .(FirstYear, Year)
+]
+
+cohort_survival[, YearsSinceEntry := Year - FirstYear]
+
+retention_long <- copy(cohort_survival)
+
+retention_long[
+  , SurvivalRate := 100 * PolicyYears /
+    PolicyYears[YearsSinceEntry == 0],
+  by = FirstYear
+]
+
 retention_plot <- ggplot(retention_long, aes(YearsSinceEntry, SurvivalRate, colour = factor(FirstYear), group = FirstYear)) +
   geom_hline(yintercept = 65, linetype = "dashed", colour = "grey50", alpha = 0.5) +  # Reference line
   geom_line(size = 1) + geom_point(size = 2) +
