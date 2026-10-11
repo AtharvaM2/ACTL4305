@@ -4,7 +4,12 @@
 library(data.table)
 library(ggplot2)
 library(scales)
+
+# Set Plot Themes
 theme_set(theme_minimal())
+theme_update(plot.title=element_text(hjust=0.5, size = 16, face = 'bold'))
+theme_update(axis.title = element_text(size = 16))
+theme_update(axis.text = element_text(size = 12))
 
 # 1. Load data --------------------------------------------------------------
 claims_history_2023_2026 <- fread("claims_history_2023_2026.csv",
@@ -374,7 +379,7 @@ severity_quantiles <- severity_data[, .(Quantile = c("Min", "25%", "50%", "75%",
 print(severity_quantiles)
 print(head(data[order(-ClaimAmount), .(PolicyID, Year, ClaimNb, ClaimAmount, VehicleType, VehValue, RiskZone)], 20))
 
-severity_plot <- ggplot(severity_data, aes(AverageClaim)) + geom_histogram(bins = 60) +
+severity_plot <- ggplot(severity_data, aes(AverageClaim)) + geom_histogram(bins = 60, , fill = 'lightblue', color = 'black') +
   scale_x_log10(labels = label_dollar()) +
   labs(title = "Average cost per claim", subtitle = "Claim-years only, shown on a log scale",
        x = "Average claim cost", y = "Policy-years")
@@ -382,7 +387,7 @@ print(severity_plot)
 
 numeric_data <- melt(data[, lapply(.SD, as.numeric), .SDcols = c("DriverAge", "YearsLicensed", "VehAge", "VehValue", "Density", "TenureYears")],
                      measure.vars = c("DriverAge", "YearsLicensed", "VehAge", "VehValue", "Density", "TenureYears"))
-numeric_plot <- ggplot(numeric_data, aes(value)) + geom_histogram(bins = 40) +
+numeric_plot <- ggplot(numeric_data, aes(value)) + geom_histogram(bins = 10, fill = 'lightblue', color = 'black') +
   facet_wrap(~variable, scales = "free") + labs(title = "Distribution of numeric rating factors", x = NULL, y = "Policy-years")
 print(numeric_plot)
 
@@ -391,7 +396,7 @@ categorical_data <- melt(data[, .(VehicleType = as.character(VehicleType), RiskZ
                                   VehicleUse = as.character(VehicleUse), PaymentFrequency = as.character(PaymentFrequency),
                                   ExcessChosen = as.character(ExcessChosen), NCDLevel = as.character(NCDLevel),
                                   MultiPolicyFlag = as.character(MultiPolicyFlag))], measure.vars = 1:9)
-categorical_plot <- ggplot(categorical_data, aes(value)) + geom_bar() +
+categorical_plot <- ggplot(categorical_data, aes(value)) + geom_bar(fill = 'lightblue') +
   facet_wrap(~variable, scales = "free_x", ncol = 3) +
   theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
   labs(title = "Distribution of categorical rating factors", x = NULL, y = "Policy-years")
