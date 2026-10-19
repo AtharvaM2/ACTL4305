@@ -1,0 +1,7 @@
+Parameter,Value
+Cap Threshold,+15% of 2026 premium
+Collar Threshold,-20% of 2026 premium
+Cap Policies,2345 (%)
+Collar Policies,12086 (%)
+Cap Justification,"Lapse elasticity: beyond +15%, net lapse risk rises sharply (elasticity ≈ -1.2); cap prevents margin erosion."
+Collar Justification,Loyalty tax risk: prevent deep discounts from new-customer acquisition costs; maintain profitability.
