@@ -268,3 +268,150 @@ lr_bridge <- data.table(
 
 cat("\n================ LOSS RATIO ATTRIBUTION BRIDGE ================\n")
 print(lr_bridge)
+
+sum(book_2027$Promised_Discount_Pct == 0)
+mean(book_2027$NCDLevel == 0 & book_2027$TenureYears < 3 & book_2027$MultiPolicy == 0) * 100
+
+
+library(data.table)
+
+# 1. Identify Zero-Discount Policies
+# (Adjust column names if already computed)
+zero_disc_idx <- which(
+  book_2027$NCDLevel == 0 & 
+    book_2027$TenureYears < 3 & 
+    book_2027$MultiPolicy == 0
+)
+
+zero_book <- book_2027[zero_disc_idx]
+
+# 2. Test Grid of Candidate Collars
+collar_grid <- c("-10% Collar" = -0.10, 
+                 "-15% Collar" = -0.15, 
+                 "-20% Collar" = -0.20, 
+                 "-30% Collar" = -0.30)
+
+collar_analysis <- rbindlist(lapply(names(collar_grid), function(nm) {
+  collar_pct <- collar_grid[[nm]]
+  
+  # Collar floor in dollars
+  floor_dollars <- zero_book$Premium_2026 * (1 + collar_pct)
+  
+  # Condition: Does the price drop below the floor?
+  hits_cup <- zero_book$Net_Discounted_Prem < floor_dollars
+  
+  # Dollars recovered by raising them to the floor
+  dollar_uplift <- sum(pmax(floor_dollars - zero_book$Net_Discounted_Prem, 0))
+  
+  data.table(
+    Collar_Threshold     = nm,
+    Policies_Floored     = sum(hits_cup),
+    Pct_of_Zero_Disc     = paste0(round(100 * mean(hits_cup), 2), "%"),
+    Pct_of_Total_Book    = paste0(round(100 * sum(hits_cup) / nrow(book_2027), 2), "%"),
+    Total_Premium_Gained = paste0("$", format(round(dollar_uplift, 0), big.mark = ","))
+  )
+}))
+
+cat("\n================ THEORETICAL COLLAR ON ZERO-DISCOUNT COHORT ================\n")
+cat("Total Policies in Zero-Discount Cohort:", nrow(zero_book), 
+    paste0("(", round(100 * nrow(zero_book) / nrow(book_2027), 2), "% of total book)\n\n"))
+print(collar_analysis)
+
+
+# TEST
+# 1. Driver Age entering 2026
+book_2027[, DriverAge_2026 := DriverAge - 1]
+
+# 2. Legacy Groupings & Multipliers (§4.2)
+book_2027[, legacy_zone_factor := fcase(
+  RiskZone == "A_Metro", 1.25,
+  RiskZone %in% c("B_InnerRegional", "C_OuterRegional"), 1.00,
+  RiskZone %in% c("D_Rural", "E_RemoteRural"), 0.80,
+  default = 1.00
+)]
+
+book_2027[, legacy_veh_factor := fcase(
+  VehicleType == "Sports", 1.45,
+  VehicleType %in% c("Sedan", "Hatch", "SUV", "Ute"), 1.00,
+  default = 1.00
+)]
+
+book_2027[, legacy_age_factor := fcase(
+  DriverAge_2026 < 25, 1.35,
+  DriverAge_2026 >= 25 & DriverAge_2026 < 65, 1.00,
+  DriverAge_2026 >= 65, 1.15,
+  default = 1.00
+)]
+
+# Legacy NCD discount formula: 1 - 0.04 * NCDLevel (capped at NCD 6 -> 24%)
+# In 2026, NCD was pre-advancement; for Gross Base (undiscounted), factor is 1.00
+book_2027[, legacy_val_factor := (VehValue / 24000) ^ 0.30]
+
+# 3. True 2026 Undiscounted Gross Base
+book_2027[, Gross_Base_2026 := 1000 * 
+            legacy_zone_factor * 
+            legacy_veh_factor * 
+            legacy_age_factor * 
+            legacy_val_factor * 
+            1.35]
+# 4
+hist_2026 <- data[Year == 2026, .(
+  PolicyID, 
+  NCDLevel_2026 = NCDLevel,
+  DriverAge_2026_hist = DriverAge
+)]
+
+# Merge into book_2027
+book_2027[hist_2026, on = "PolicyID", `:=`(
+  NCDLevel_2026 = i.NCDLevel_2026,
+  DriverAge_2026_hist = i.DriverAge_2026_hist
+)]
+
+# Fallback: if any policy wasn't observed in 2026 claims history, use DriverAge - 1
+book_2027[is.na(NCDLevel_2026), NCDLevel_2026 := pmax(0, NCDLevel - 1)]
+
+# 5. Compute Legacy NCD Factor and Reconstructed Premium ------------------
+# Legacy NCD Formula (§4.2): 1 - 0.04 * NCDLevel (capped at NCD 6 -> 24% discount)
+book_2027[, legacy_ncd_factor := 1 - 0.04 * pmin(NCDLevel_2026, 6)]
+
+# Formula: Premium_2026 = LegacyTechnicalPrice * 1.35 (rounded, floored at $350)
+# Since Gross_Base_2026 = LegacyTechnicalPrice(NCD=0) * 1.35:
+# LegacyTechnicalPrice * 1.35 = Gross_Base_2026 * legacy_ncd_factor
+book_2027[, Legacy_PreFloor_Prem := Gross_Base_2026 * legacy_ncd_factor]
+book_2027[, Reconstructed_Prem_2026 := round(pmax(Legacy_PreFloor_Prem, 350))]
+
+
+# 6. Alignment & Reconciliation Audit -------------------------------------
+book_2027[, Dollar_Diff := abs(Reconstructed_Prem_2026 - Premium_2026)]
+
+recon_summary <- data.table(
+  Total_Policies      = nrow(book_2027),
+  Exact_Matches       = sum(book_2027$Dollar_Diff == 0),
+  Exact_Match_Pct     = paste0(round(100 * mean(book_2027$Dollar_Diff == 0), 2), "%"),
+  Within_1_Dollar     = sum(book_2027$Dollar_Diff <= 1), Within_1_Dollar_Pct = paste0(round(100 * mean(book_2027$Dollar_Diff <= 1), 2), "%"),
+  Max_Dollar_Diff     = max(book_2027$Dollar_Diff),
+  Mean_Dollar_Diff    = round(mean(book_2027$Dollar_Diff), 4)
+)
+
+cat("\n=================== 2026 PREMIUM RECONCILIATION AUDIT ===================\n")
+print(recon_summary)
+
+# 7. Diagnostic Breakdown of Discrepancies (if any > $1) -------------------
+bad_matches <- book_2027[Dollar_Diff > 1]
+if (nrow(bad_matches) > 0) {
+  cat("\nPolicies with >$1 difference:", nrow(bad_matches), "\n")
+  print(head(bad_matches[, .(
+    PolicyID, DriverAge, DriverAge_2026, NCDLevel, NCDLevel_2026,
+    VehValue, RiskZone, VehicleType, Gross_Base_2026, 
+    Reconstructed_Prem_2026, Premium_2026, Dollar_Diff
+  )], 10))
+} else {
+  cat("\n✓ Perfect match: 100% of policies match Premium_2026 within rounding error!\n")
+}
+
+# 8. Check Impact of the $350 Floor ---------------------------------------
+floored_policies <- book_2027[Premium_2026 == 350]
+cat("\nPolicies sitting on the $350 floor in 2026:", nrow(floored_policies), 
+    paste0("(", round(100 * nrow(floored_policies) / nrow(book_2027), 2), "% of book)\n"))
+
+round(mean(book_2027$Premium_2026), 2)
