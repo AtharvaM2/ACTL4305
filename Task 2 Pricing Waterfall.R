@@ -414,4 +414,21 @@ floored_policies <- book_2027[Premium_2026 == 350]
 cat("\nPolicies sitting on the $350 floor in 2026:", nrow(floored_policies), 
     paste0("(", round(100 * nrow(floored_policies) / nrow(book_2027), 2), "% of book)\n"))
 
-round(mean(book_2027$Premium_2026), 2)
+round(mean(book_2027$Reconstructed_Prem_2026), 2)
+round(mean(renewal_book_2027$Premium_2026), 2)
+
+# Pick 1 row
+p <- book_2027[sample(.N, 1)]
+
+# 1. Print formula pieces
+c(Base = 1000, 
+  Zone = p$legacy_zone_factor, 
+  Veh = p$legacy_veh_factor, 
+  Age = p$legacy_age_factor, 
+  NCD = p$legacy_ncd_factor, 
+  Value = round((p$VehValue / 24000)^0.3, 4), 
+  Load = 1.35)
+
+# 2. Multiply and compare against actual
+calc <- round(1000 * p$legacy_zone_factor * p$legacy_veh_factor * p$legacy_age_factor * p$legacy_ncd_factor * ((p$VehValue / 24000)^0.3) * 1.35)
+c(Calculated = calc, Actual = p$Premium_2026, Match = (calc == p$Premium_2026))
