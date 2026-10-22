@@ -1,0 +1,12 @@
+TestID,Premium_2026,PaymentFrequency,NCDLevel,TenureYears,MultiPolicyFlag,PreGuard,Final,Position,Pass
+NCD0_Tenure1,1567.07,Annual,0,1,0,1567.07,1567.07,Free (no guardrail),TRUE
+NCD6_Tenure7,589.22,Annual,6,7,0,589.22,589.22,Free (no guardrail),TRUE
+NCD1_Tenure1_NoLoyalty,1410.37,Annual,1,1,0,1410.37,1410.37,Free (no guardrail),TRUE
+NCD1_Tenure15_Loyalty10,1269.33,Annual,1,15,0,1269.33,1269.33,Free (no guardrail),TRUE
+MultiPolicy_Yes,1269.33,Annual,1,1,1,1269.33,1269.33,Free (no guardrail),TRUE
+MultiPolicy_No,1410.37,Annual,1,1,0,1410.37,1410.37,Free (no guardrail),TRUE
+Monthly_Instalment,1452.68,Monthly,1,1,0,1452.68,1452.68,Free (no guardrail),TRUE
+Stack_NCD6_Loyalty10,564.15,Annual,6,15,0,564.15,564.15,Free (no guardrail),TRUE
+NewBiz_MultiOnly,1410.37,Annual,0,0,1,1410.37,1410.37,Free (no guardrail),TRUE
+Cap_Binds,500,Annual,0,1,0,1567.07,575,Capped at ceiling,TRUE
+Collar_Binds,3000,Annual,6,15,1,507.73,2400,Collared at floor,TRUE

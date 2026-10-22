@@ -1,0 +1,6 @@
+TestID,PaymentFrequency,NCDLevel,TenureYears,MultiPolicyFlag,Final_2027,Loaded,GuardLoaded,Final,InBand,Position,Pass
+NewBiz_NoGuardrail,Annual,0,0,1,,1567.07,1567.07,1410.37,TRUE,New business (no guardrail),TRUE
+Renewal_Free,Annual,1,1,0,1500,1567.07,1567.07,1410.37,TRUE,Free (no guardrail),TRUE
+Renewal_Cap,Annual,0,1,0,1000,2542.68,1150,1150,TRUE,Capped on loaded premium,TRUE
+Renewal_Collar,Annual,6,15,1,1000,713.41,800,259.2,FALSE,Collared on loaded premium,TRUE
+Monthly_Instalment,Monthly,1,1,0,1500,1567.07,1567.07,1452.68,TRUE,Free (no guardrail),TRUE
