@@ -180,27 +180,31 @@ apply_commercial_discounts <- function(dt,
                                        ncd_rates = c("0" = 0.00, "1" = 0.10, "2" = 0.20, 
                                                      "3" = 0.30, "4" = 0.40, "5" = 0.50, "6" = 0.60),
                                        multipolicy_rate = 0.10,
-                                       loyalty_per_year = 0.01,
-                                       loyalty_max      = 0.10,
                                        compound         = TRUE,
                                        verbose          = TRUE) {
   
-  # a. Map discount percentages
+  # a. Map NCD Discount
   dt[, NCDDiscount := ncd_rates[as.character(NCDLevel)]]
   dt[is.na(NCDDiscount), NCDDiscount := 0]
   
-  mp_col <- intersect(c("MultiPolicy", "HasMultiPolicy", "MultiPolicyFlag"), names(dt))[1]
+  # b. Map Multi-Policy Discount (Spec uses MultiPolicyFlag)
+  mp_col <- intersect(c("MultiPolicyFlag", "MultiPolicy", "HasMultiPolicy"), names(dt))[1]
   dt[, MultiPolicyDiscount := if (!is.na(mp_col)) fifelse(get(mp_col) %in% c(1, "1", "Yes", TRUE), multipolicy_rate, 0) else 0]
   
-  tenure_col <- intersect(c("Tenure", "CustomerTenure", "PolicyTenure", "LoyaltyYears"), names(dt))[1]
-  dt[, LoyaltyDiscount := if (!is.na(tenure_col)) pmin(pmax(get(tenure_col), 0) * loyalty_per_year, loyalty_max) else 0]
+  # c. Map Loyalty Discount using Spec Step Bands
+  tenure_col <- intersect(c("TenureYears", "Tenure", "CustomerTenure"), names(dt))[1]
+  dt[, LoyaltyDiscount := fcase(
+    get(tenure_col) >= 10, 0.10,
+    get(tenure_col) >= 6,  0.06,
+    get(tenure_col) >= 3,  0.03,
+    default = 0.00
+  )]
   
-  # b. Dollar breakdown (sequential cascade if compounded)
+  # d. Sequential / Compounded Waterfall Dollar Breakdown
   if (compound) {
     dt[, DiscountMultiplier := (1 - NCDDiscount) * (1 - MultiPolicyDiscount) * (1 - LoyaltyDiscount)]
     dt[, DiscountedPremium  := CapCupLoadedPremium * DiscountMultiplier]
     
-    # Exact waterfall dollar attribution
     dt[, NCDDiscountDollar         := CapCupLoadedPremium * NCDDiscount]
     dt[, MultiPolicyDiscountDollar := (CapCupLoadedPremium - NCDDiscountDollar) * MultiPolicyDiscount]
     dt[, LoyaltyDiscountDollar     := (CapCupLoadedPremium - NCDDiscountDollar - MultiPolicyDiscountDollar) * LoyaltyDiscount]
@@ -230,11 +234,10 @@ apply_commercial_discounts <- function(dt,
   return(invisible(dt))
 }
 
-
 # 10. Instalment Costs ----------------------------------------------------
 
 apply_instalment_surcharge <- function(dt, 
-                                       surcharge_rate = 0.08, # standard 8% surcharge for monthly pay
+                                       surcharge_rate = 0.03, # standard 8% surcharge for monthly pay
                                        verbose        = TRUE) {
   
   # a. Identify payment frequency column
@@ -535,3 +538,4 @@ apply_tiered_cap_cup(
 )
 apply_commercial_discounts(book_2027)
 apply_instalment_surcharge(book_2027)
+mean(book_2027$FinalPrice)
