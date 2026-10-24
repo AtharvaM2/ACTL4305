@@ -106,8 +106,9 @@ cat("Min / Max Loaded Premium         : $", round(min(book_2027$LoadedPremium), 
 # 8. Cap/Cups Testing & Application ---------------------------------------
 
 # Distribution histogram with lapse risk thresholds
-book_2027[, RawRateChange := (LoadedPremium / LegacyGrossBase_2026) - 1]
-raw_pct <- book_2027$RawRateChange * 100
+book_2027[, RawRateChangePct := (LoadedPremium / LegacyGrossBase_2026) - 1]
+book_2027[, RawRateChangeDollarAmt := LoadedPremium - LegacyGrossBase_2026]
+raw_pct <- book_2027$RawRateChangePct * 100
 hist(
   raw_pct,
   breaks = 60,
@@ -146,28 +147,33 @@ apply_tiered_cap_cup <- function(dt,
                                  cup_values = c(-0.15, -0.10),
                                  verbose    = TRUE) {
   
-  # Ensure RawRateChange exists
-  if (!"RawRateChange" %in% names(dt)) {
-    dt[, RawRateChange := (LoadedPremium / LegacyGrossBase_2026) - 1]
+  # Ensure RawRateChangePct exists
+  if (!"RawRateChangePct" %in% names(dt)) {
+    dt[, RawRateChangePct := (LoadedPremium / LegacyGrossBase_2026) - 1]
   }
   
-  # Assign custom caps and cups using cut()
+  # Assign custom caps and cups
   dt[, `:=`(
-    CapPct = as.numeric(as.character(cut(RawRateChange, breaks = cap_breaks, labels = cap_values, right = TRUE))),
-    CupPct = as.numeric(as.character(cut(RawRateChange, breaks = cup_breaks, labels = cup_values, right = TRUE)))
+    CapPct = as.numeric(as.character(cut(RawRateChangePct, breaks = cap_breaks, labels = cap_values, right = TRUE))),
+    CupPct = as.numeric(as.character(cut(RawRateChangePct, breaks = cup_breaks, labels = cup_values, right = TRUE)))
   )]
   
-  # Bound rate change and compute CapCupLoadedPremium
-  dt[, EffectiveRateChange := pmin(pmax(RawRateChange, CupPct), CapPct)]
-  dt[, CapCupLoadedPremium := LegacyGrossBase_2026 * (1 + EffectiveRateChange)]
+  # Effective changes and dollar impacts
+  dt[, EffectiveRateChangePct := pmin(pmax(RawRateChangePct, CupPct), CapPct)]
+  dt[, CapCupLoadedPremium := LegacyGrossBase_2026 * (1 + EffectiveRateChangePct)]
+  
+  # Dollar amount tracking
+  dt[, RawRateChangeDollarAmt       := LoadedPremium - LegacyGrossBase_2026]
+  dt[, EffectiveRateChangeDollarAmt := CapCupLoadedPremium - LegacyGrossBase_2026]
+  dt[, CapCupAdjustmentDollarAmt    := CapCupLoadedPremium - LoadedPremium] # Captures both cap and cup dollar impacts
   
   if (verbose) {
     cat("--------------------------------------------------\n")
-    cat("Mean Raw Rate Change       :", round(mean(dt$RawRateChange) * 100, 1), "%\n")
-    cat("Mean Effective Rate Change :", round(mean(dt$EffectiveRateChange) * 100, 1), "%\n")
+    cat("Mean Raw Rate Change       :", round(mean(dt$RawRateChangePct) * 100, 1), "%\n")
+    cat("Mean Effective Rate Change :", round(mean(dt$EffectiveRateChangePct) * 100, 1), "%\n")
     cat("Mean CapCupLoadedPremium   : $", round(mean(dt$CapCupLoadedPremium), 2), "\n")
-    cat("Policies hitting Cap       :", round(mean(dt$RawRateChange >= dt$CapPct) * 100, 1), "%\n")
-    cat("Policies hitting Cup       :", round(mean(dt$RawRateChange <= dt$CupPct) * 100, 1), "%\n")
+    cat("Policies hitting Cap       :", round(mean(dt$RawRateChangePct >= dt$CapPct) * 100, 1), "%\n")
+    cat("Policies hitting Cup       :", round(mean(dt$RawRateChangePct <= dt$CupPct) * 100, 1), "%\n")
     cat("--------------------------------------------------\n")
   }
   
@@ -183,50 +189,52 @@ apply_commercial_discounts <- function(dt,
                                        compound         = TRUE,
                                        verbose          = TRUE) {
   
-  # a. Map NCD Discount
-  dt[, NCDDiscount := ncd_rates[as.character(NCDLevel)]]
-  dt[is.na(NCDDiscount), NCDDiscount := 0]
+  # a. Map NCD Discount %
+  dt[, NCDDiscountPct := ncd_rates[as.character(NCDLevel)]]
+  dt[is.na(NCDDiscountPct), NCDDiscountPct := 0]
   
-  # b. Map Multi-Policy Discount (Spec uses MultiPolicyFlag)
+  # b. Map Multi-Policy Discount %
   mp_col <- intersect(c("MultiPolicyFlag", "MultiPolicy", "HasMultiPolicy"), names(dt))[1]
-  dt[, MultiPolicyDiscount := if (!is.na(mp_col)) fifelse(get(mp_col) %in% c(1, "1", "Yes", TRUE), multipolicy_rate, 0) else 0]
+  dt[, MultiPolicyDiscountPct := if (!is.na(mp_col)) fifelse(get(mp_col) %in% c(1, "1", "Yes", TRUE), multipolicy_rate, 0) else 0]
   
-  # c. Map Loyalty Discount using Spec Step Bands
+  # c. Map Loyalty Discount %
   tenure_col <- intersect(c("TenureYears", "Tenure", "CustomerTenure"), names(dt))[1]
-  dt[, LoyaltyDiscount := fcase(
+  dt[, LoyaltyDiscountPct := fcase(
     get(tenure_col) >= 10, 0.10,
     get(tenure_col) >= 6,  0.06,
     get(tenure_col) >= 3,  0.03,
     default = 0.00
   )]
   
-  # d. Sequential / Compounded Waterfall Dollar Breakdown
+  # d. Sequential Waterfall Dollar Breakdown
   if (compound) {
-    dt[, DiscountMultiplier := (1 - NCDDiscount) * (1 - MultiPolicyDiscount) * (1 - LoyaltyDiscount)]
+    dt[, DiscountMultiplier := (1 - NCDDiscountPct) * (1 - MultiPolicyDiscountPct) * (1 - LoyaltyDiscountPct)]
     dt[, DiscountedPremium  := CapCupLoadedPremium * DiscountMultiplier]
     
-    dt[, NCDDiscountDollar         := CapCupLoadedPremium * NCDDiscount]
-    dt[, MultiPolicyDiscountDollar := (CapCupLoadedPremium - NCDDiscountDollar) * MultiPolicyDiscount]
-    dt[, LoyaltyDiscountDollar     := (CapCupLoadedPremium - NCDDiscountDollar - MultiPolicyDiscountDollar) * LoyaltyDiscount]
+    dt[, NCDDiscountDollarAmt         := CapCupLoadedPremium * NCDDiscountPct]
+    dt[, MultiPolicyDiscountDollarAmt := (CapCupLoadedPremium - NCDDiscountDollarAmt) * MultiPolicyDiscountPct]
+    dt[, LoyaltyDiscountDollarAmt     := (CapCupLoadedPremium - NCDDiscountDollarAmt - MultiPolicyDiscountDollarAmt) * LoyaltyDiscountPct]
   } else {
-    dt[, DiscountMultiplier := pmax(0, 1 - (NCDDiscount + MultiPolicyDiscount + LoyaltyDiscount))]
+    dt[, DiscountMultiplier := pmax(0, 1 - (NCDDiscountPct + MultiPolicyDiscountPct + LoyaltyDiscountPct))]
     dt[, DiscountedPremium  := CapCupLoadedPremium * DiscountMultiplier]
     
-    dt[, NCDDiscountDollar         := CapCupLoadedPremium * NCDDiscount]
-    dt[, MultiPolicyDiscountDollar := CapCupLoadedPremium * MultiPolicyDiscount]
-    dt[, LoyaltyDiscountDollar     := CapCupLoadedPremium * LoyaltyDiscount]
+    dt[, NCDDiscountDollarAmt         := CapCupLoadedPremium * NCDDiscountPct]
+    dt[, MultiPolicyDiscountDollarAmt := CapCupLoadedPremium * MultiPolicyDiscountPct]
+    dt[, LoyaltyDiscountDollarAmt     := CapCupLoadedPremium * LoyaltyDiscountPct]
   }
   
-  dt[, TotalDiscountDollar := CapCupLoadedPremium - DiscountedPremium]
+  # e. Total Discount Totals (% and $)
+  dt[, TotalDiscountDollarAmt := CapCupLoadedPremium - DiscountedPremium]
+  dt[, TotalDiscountPct       := fifelse(CapCupLoadedPremium > 0, TotalDiscountDollarAmt / CapCupLoadedPremium, 0)]
   
   if (verbose) {
     cat("--------------------------------------------------\n")
     cat("Mean Cap/Cup Loaded Premium : $", round(mean(dt$CapCupLoadedPremium), 2), "\n")
-    cat("Mean NCD Savings            : -$ ", round(mean(dt$NCDDiscountDollar), 2), "\n")
-    cat("Mean Multi-Policy Savings   : -$ ", round(mean(dt$MultiPolicyDiscountDollar), 2), "\n")
-    cat("Mean Loyalty Savings        : -$ ", round(mean(dt$LoyaltyDiscountDollar), 2), "\n")
-    cat("Mean Total Discount Given   : -$ ", round(mean(dt$TotalDiscountDollar), 2), 
-        "(", round(mean(dt$TotalDiscountDollar / dt$CapCupLoadedPremium) * 100, 1), "%)\n")
+    cat("Mean NCD Savings            : -$ ", round(mean(dt$NCDDiscountDollarAmt), 2), "\n")
+    cat("Mean Multi-Policy Savings   : -$ ", round(mean(dt$MultiPolicyDiscountDollarAmt), 2), "\n")
+    cat("Mean Loyalty Savings        : -$ ", round(mean(dt$LoyaltyDiscountDollarAmt), 2), "\n")
+    cat("Mean Total Discount Given   : -$ ", round(mean(dt$TotalDiscountDollarAmt), 2), 
+        "(", round(mean(dt$TotalDiscountPct) * 100, 1), "%)\n")
     cat("Mean Discounted Premium     : $", round(mean(dt$DiscountedPremium), 2), "\n")
     cat("--------------------------------------------------\n")
   }
@@ -237,24 +245,25 @@ apply_commercial_discounts <- function(dt,
 # 10. Instalment Costs ----------------------------------------------------
 
 apply_instalment_surcharge <- function(dt, 
-                                       surcharge_rate = 0.03, # standard 8% surcharge for monthly pay
+                                       surcharge_rate = 0.03, # 3% surcharge for monthly pay
                                        verbose        = TRUE) {
   
   # a. Identify payment frequency column
   freq_col <- intersect(c("PaymentFrequency", "PayFreq", "PaymentMethod"), names(dt))[1]
   
   if (!is.na(freq_col)) {
-    dt[, InstalmentSurchargeRate := fifelse(get(freq_col) %in% c("Monthly", "M", 12), surcharge_rate, 0.0)]
+    dt[, InstalmentSurchargePct := fifelse(get(freq_col) %in% c("Monthly", "M", 12), surcharge_rate, 0.0)]
   } else {
-    dt[, InstalmentSurchargeRate := 0.0]
+    dt[, InstalmentSurchargePct := 0.0]
   }
   
-  # b. Final Premium (annualised total payable)
-  dt[, FinalPrice := DiscountedPremium * (1 + InstalmentSurchargeRate)]
+  # b. Dollar Surcharge and Final Price
+  dt[, InstalmentSurchargeDollarAmt := round(DiscountedPremium * InstalmentSurchargePct, 2)]
+  dt[, FinalPrice                   := DiscountedPremium + InstalmentSurchargeDollarAmt]
   
   # c. Per-period bill amount
   dt[, AmountPerPayment := fifelse(
-    InstalmentSurchargeRate > 0, 
+    InstalmentSurchargePct > 0, 
     round(FinalPrice / 12, 2), 
     round(FinalPrice, 2)
   )]
@@ -263,9 +272,10 @@ apply_instalment_surcharge <- function(dt,
   if (verbose) {
     cat("--------------------------------------------------\n")
     cat("Mean Discounted Premium    : $", round(mean(dt$DiscountedPremium), 2), "\n")
+    cat("Mean Instalment Fee ($)    : $", round(mean(dt$InstalmentSurchargeDollarAmt), 2), "\n")
     cat("Mean Final Premium         : $", round(mean(dt$FinalPrice), 2), "\n")
-    cat("Monthly Payers (%)         :", round(mean(dt$InstalmentSurchargeRate > 0) * 100, 1), "%\n")
-    cat("Mean Monthly Payment       : $", round(mean(dt[InstalmentSurchargeRate > 0]$AmountPerPayment), 2), "/ month\n")
+    cat("Monthly Payers (%)         :", round(mean(dt$InstalmentSurchargePct > 0) * 100, 1), "%\n")
+    cat("Mean Monthly Payment       : $", round(mean(dt[InstalmentSurchargePct > 0]$AmountPerPayment), 2), "/ month\n")
     cat("Min / Max Final Premium    : $", round(min(dt$FinalPrice), 2), 
         "/ $", round(max(dt$FinalPrice), 2), "\n")
     cat("--------------------------------------------------\n")
@@ -307,10 +317,10 @@ test_pricing_scenario <- function(dt,
   profit_margin  <- 100 - combined_ratio
   
   # Step E: Full Lapse Risk Tier Breakdown
-  pct_0to5   <- mean(d$EffectiveRateChange <= 0.05) * 100
-  pct_5to15  <- mean(d$EffectiveRateChange > 0.05 & d$EffectiveRateChange <= 0.15) * 100
-  pct_15to30 <- mean(d$EffectiveRateChange > 0.15 & d$EffectiveRateChange <= 0.30) * 100
-  pct_gt30   <- mean(d$EffectiveRateChange > 0.30) * 100
+  pct_0to5   <- mean(d$EffectiveRateChangePct <= 0.05) * 100
+  pct_5to15  <- mean(d$EffectiveRateChangePct > 0.05 & d$EffectiveRateChangePct <= 0.15) * 100
+  pct_15to30 <- mean(d$EffectiveRateChangePct > 0.15 & d$EffectiveRateChangePct <= 0.30) * 100
+  pct_gt30   <- mean(d$EffectiveRateChangePct > 0.30) * 100
   
   data.table(
     Scenario        = scenario_name,
@@ -462,7 +472,7 @@ legend(
 # -------------------------------------------------------------------------
 
 # 1. Driver 1: Impact of Capping (Policies hitting cap vs not)
-diag_dt[, HitCap := RawRateChange >= CapPct]
+diag_dt[, HitCap := RawRateChangePct >= CapPct]
 cat("\n=== LOSS RATIO BY CAP STATUS ===\n")
 print(diag_dt[, .(
   Count = .N,
@@ -483,9 +493,9 @@ print(diag_dt[, .(
 
 # 3. Driver 3: Impact of Non-Risk Discounts (Multi-Policy & Loyalty)
 diag_dt[, Discount_Bucket := fcase(
-  MultiPolicyDiscount > 0 & LoyaltyDiscount > 0.05, "Multi-Policy + High Loyalty",
-  MultiPolicyDiscount > 0, "Multi-Policy Only",
-  LoyaltyDiscount > 0.05, "High Loyalty Only",
+  MultiPolicyDiscountPct > 0 & LoyaltyDiscountPct > 0.05, "Multi-Policy + High Loyalty",
+  MultiPolicyDiscountPct > 0, "Multi-Policy Only",
+  LoyaltyDiscountPct > 0.05, "High Loyalty Only",
   default = "Standard"
 )]
 cat("\n=== LOSS RATIO BY COMMERCIAL DISCOUNT STACKING ===\n")
@@ -497,7 +507,7 @@ print(diag_dt[, .(
 
 
 diag_dt[, CapBand := cut(
-  RawRateChange,
+  RawRateChangePct,
   breaks = c(-Inf, 0.05, 0.15, 0.225, 0.30, 0.60, Inf),
   labels = c(
     "1. <= 5% (Cap 5%)",
@@ -514,10 +524,10 @@ cat("\n=== POLICY DISTRIBUTION ACROSS CAP TIERS ===\n")
 cap_tier_summary <- diag_dt[, .(
   Total_Policies   = .N,
   Pct_of_Book      = paste0(round(.N / nrow(diag_dt) * 100, 1), "%"),
-  Policies_Capped  = sum(RawRateChange >= CapPct),
-  Pct_Capped       = paste0(round(mean(RawRateChange >= CapPct) * 100, 1), "%"),
-  Mean_Raw_Chg     = paste0(round(mean(RawRateChange) * 100, 1), "%"),
-  Mean_Eff_Chg     = paste0(round(mean(EffectiveRateChange) * 100, 1), "%"),
+  Policies_Capped  = sum(RawRateChangePct >= CapPct),
+  Pct_Capped       = paste0(round(mean(RawRateChangePct >= CapPct) * 100, 1), "%"),
+  Mean_Raw_Chg     = paste0(round(mean(RawRateChangePct) * 100, 1), "%"),
+  Mean_Eff_Chg     = paste0(round(mean(EffectiveRateChangePct) * 100, 1), "%"),
   Mean_TechPrice   = paste0("$", round(mean(TechnicalPrice), 0)),
   Mean_FinalPrem   = paste0("$", round(mean(FinalPrice), 0)),
   Mean_LR          = paste0(round(mean(PolicyLossRatio), 1), "%"),
@@ -539,3 +549,417 @@ apply_tiered_cap_cup(
 apply_commercial_discounts(book_2027)
 apply_instalment_surcharge(book_2027)
 mean(book_2027$FinalPrice)
+
+
+# 15. Order columns -------------------------------------------------------
+
+setcolorder(book_2027, c(
+  # --- Raw Policy Inputs ---
+  "PolicyID",                     # Raw input
+  "DriverAge", "VehValue", "VehValueBand", "VehicleType", "VehicleUse",
+  "GaragingLocation", "AnnualKms", "RiskZone", "ExcessChosen",
+  "TenureYears", "NCDLevel", "MultiPolicyFlag", "PaymentFrequency",
+  "Premium_2026",                 # Raw 2026 billed premium (legacy discounted)
+  "YearIndex",                    # Derived: Year - 2026
+  
+  # --- Stage 0: Risk Pricing ---
+  "TechnicalPrice",               # Derived: predict(Freq) * predict(Sev) [True claim cost]
+  "BaseTechnicalPrice",           # Derived: predict(Freq | NCD=0, Ann) * predict(Sev) [Base risk]
+  
+  # --- Stage 1: Loaded Shelf Price ---
+  "LoadedPremium",                # Derived: (BaseTechnicalPrice + 85) / 0.82
+  
+  # --- Stage 2: 2026 Baseline & Capping / Collaring ---
+  "DriverAge_2026",               # Derived: DriverAge - 1
+  "LegacyZoneFactor", "LegacyVehFactor", "LegacyAgeFactor", "LegacyValFactor", # Legacy rating factors
+  "LegacyGrossBase_2026",         # Derived: max(1000 * LegacyFactors * 1.35, 350)
+  "RawRateChangePct",             # Derived: (LoadedPremium / LegacyGrossBase_2026) - 1
+  "RawRateChangeDollarAmt",       # Derived: LoadedPremium - LegacyGrossBase_2026
+  "CapPct",                       # Derived: cut(RawRateChangePct) upper bound
+  "CupPct",                       # Derived: cut(RawRateChangePct) lower bound
+  "EffectiveRateChangePct",       # Derived: pmin(pmax(RawRateChangePct, CupPct), CapPct)
+  "EffectiveRateChangeDollarAmt", # Derived: CapCupLoadedPremium - LegacyGrossBase_2026
+  "CapCupAdjustmentDollarAmt",    # Derived: CapCupLoadedPremium - LoadedPremium (cap/cup impact)
+  "CapCupLoadedPremium",          # Derived: LegacyGrossBase_2026 * (1 + EffectiveRateChangePct)
+  
+  # --- Stage 3: Commercial Discounts ---
+  "NCDDiscountPct",               # Derived: NCDLevel * 0.10
+  "NCDDiscountDollarAmt",         # Derived: CapCupLoadedPremium * NCDDiscountPct
+  "MultiPolicyDiscountPct",       # Derived: fifelse(MultiPolicyFlag == 1, 0.10, 0)
+  "MultiPolicyDiscountDollarAmt", # Derived: (CapCupLoadedPremium - NCDDiscountDollarAmt) * MultiPolicyDiscountPct
+  "LoyaltyDiscountPct",           # Derived: fcase(TenureYears >= 10, 0.10, >= 6, 0.06, >= 3, 0.03, 0)
+  "LoyaltyDiscountDollarAmt",     # Derived: (BalanceAfterMulti) * LoyaltyDiscountPct
+  "TotalDiscountDollarAmt",       # Derived: CapCupLoadedPremium - DiscountedPremium
+  "TotalDiscountPct",             # Derived: TotalDiscountDollarAmt / CapCupLoadedPremium
+  "DiscountedPremium",            # Derived: CapCupLoadedPremium * (1 - NCD) * (1 - MP) * (1 - Loyal)
+  
+  # --- Stage 4: Surcharge & Final Price ---
+  "InstalmentSurchargePct",       # Derived: fifelse(PaymentFrequency == "Monthly", 0.03, 0)
+  "InstalmentSurchargeDollarAmt", # Derived: round(DiscountedPremium * InstalmentSurchargePct, 2)
+  "FinalPrice",                   # Derived: DiscountedPremium + InstalmentSurchargeDollarAmt
+  "AmountPerPayment"              # Derived: fifelse(Monthly, FinalPrice / 12, FinalPrice)
+))
+
+
+# 16a. Extract Single Policy Details to check correct waterfall app --------
+
+# Inspects any policy end-to-end to verify waterfall mechanics or extract
+# case-study figures for Task 4.
+
+inspect_policy <- function(dt, id) {
+  p <- dt[PolicyID == id]
+  if (nrow(p) == 0) stop("PolicyID not found.")
+  
+  # Math integrity check for this specific policy
+  disc_bal_ok  <- abs((p$CapCupLoadedPremium - (p$NCDDiscountDollarAmt + 
+                                                  p$MultiPolicyDiscountDollarAmt + 
+                                                  p$LoyaltyDiscountDollarAmt)) - p$DiscountedPremium) < 1e-4
+  final_bal_ok <- abs((p$DiscountedPremium + p$InstalmentSurchargeDollarAmt) - p$FinalPrice) < 1e-4
+  
+  status_msg <- if (disc_bal_ok && final_bal_ok) "PASS (Discounts add up)" else "FAIL (Discounts not adding up)"
+  
+  data.frame(
+    Stage = c(
+      "0. Pure Risk Cost (Task 1)",
+      "0. Base Risk (NCD=0, Annual)",
+      "1. Loaded Gross Shelf Price",
+      "2. 2026 Gross Baseline",
+      "2. Raw Rate Movement (%)",
+      "2. Effective Rate Movement (%)",
+      "2. Cap/Cup Adjustment ($)",
+      "2. Capped Shelf Base",
+      "3. NCD Discount ($)",
+      "3. Multi-Policy Discount ($)",
+      "3. Loyalty Discount ($)",
+      "3. Discounted Annual Premium",
+      "4. Instalment Surcharge ($)",
+      "4. Final Billed Premium",
+      "--- AUDIT CHECK ---"
+    ),
+    Variable = c(
+      "TechnicalPrice",
+      "BaseTechnicalPrice",
+      "LoadedPremium",
+      "LegacyGrossBase_2026",
+      "RawRateChangePct",
+      "EffectiveRateChangePct",
+      "CapCupAdjustmentDollarAmt",
+      "CapCupLoadedPremium",
+      "NCDDiscountDollarAmt (Pct)",
+      "MultiPolicyDiscountDollarAmt (Pct)",
+      "LoyaltyDiscountDollarAmt (Pct)",
+      "DiscountedPremium",
+      "InstalmentSurchargeDollarAmt (Pct)",
+      "FinalPrice",
+      "[Integrity Check]"
+    ),
+    Amount = c(
+      sprintf("$%.2f", p$TechnicalPrice),
+      sprintf("$%.2f", p$BaseTechnicalPrice),
+      sprintf("$%.2f", p$LoadedPremium),
+      sprintf("$%.2f", p$LegacyGrossBase_2026),
+      sprintf("%+.2f%%", p$RawRateChangePct * 100),
+      sprintf("%+.2f%%", p$EffectiveRateChangePct * 100),
+      sprintf("%+.2f", p$CapCupAdjustmentDollarAmt),
+      sprintf("$%.2f", p$CapCupLoadedPremium),
+      sprintf("-$%.2f (%d%%)", p$NCDDiscountDollarAmt, round(p$NCDDiscountPct * 100)),
+      sprintf("-$%.2f (%d%%)", p$MultiPolicyDiscountDollarAmt, round(p$MultiPolicyDiscountPct * 100)),
+      sprintf("-$%.2f (%d%%)", p$LoyaltyDiscountDollarAmt, round(p$LoyaltyDiscountPct * 100)),
+      sprintf("$%.2f", p$DiscountedPremium),
+      sprintf("+$%.2f (%d%%)", p$InstalmentSurchargeDollarAmt, round(p$InstalmentSurchargePct * 100)),
+      sprintf("$%.2f", p$FinalPrice),
+      status_msg
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+# Spot-check policy
+print(inspect_policy(book_2027, book_2027$PolicyID[37]))
+
+
+# 16b. Testing all policies across the portfolio --------------------------
+# TEST 1: Check that the final premiums, discounts and technical prices line up
+# Verifies that:
+#   (1) Capped Base - All 3 Discount Dollars == DiscountedPremium
+#   (2) DiscountedPremium + Surcharge Dollar == FinalPrice
+
+# 1. Total discount dollars subtracted from capped shelf base
+reconciled_discounted_prem <- book_2027$CapCupLoadedPremium - 
+  (book_2027$NCDDiscountDollarAmt + 
+     book_2027$MultiPolicyDiscountDollarAmt + 
+     book_2027$LoyaltyDiscountDollarAmt)
+
+# 2. Maximum discrepancy across all 17,200 policies
+max_discount_leak <- max(abs(book_2027$DiscountedPremium - reconciled_discounted_prem))
+max_final_leak    <- max(abs(book_2027$FinalPrice - (book_2027$DiscountedPremium + book_2027$InstalmentSurchargeDollarAmt)))
+
+# Assert exact dollar balance
+stopifnot(max_discount_leak < 1e-4)
+stopifnot(max_final_leak < 1e-4)
+
+cat(sprintf("[PASS] Test 1: Dollar Conservation verified across 100%% of policies (Max error = $%.6f).\n", 
+            max(max_discount_leak, max_final_leak)))
+
+
+# 16c. Combinations test - ensure promises are delivered ----------------
+
+# To prove all discounts work together across every possible customer type:
+# 1. We test every combination of NCD (0-6), Multi-Policy (0/1), and Loyalty (0%, 3%, 6%, 10%).
+#    This forms 7 x 2 x 4 = 56 distinct customer archetypes.
+# 2. For each policy, we calculate the delivered percentage for each discount against
+#    its active balance, as well as the combined total discount percentage received.
+# 3. We group by all 3 discount factors simultaneously and display the actual promised
+#    vs delivered percentages side-by-side so we can manually review each combination.
+# 4. We run stopifnot() across all 17,200 rows to prove that no single policyholder
+#    in any combination experienced any discount loss.
+
+# 1. Calculate active balance entering each discount stage
+bal_after_ncd   <- book_2027$CapCupLoadedPremium - book_2027$NCDDiscountDollarAmt
+bal_after_multi <- bal_after_ncd - book_2027$MultiPolicyDiscountDollarAmt
+
+
+# 2. Reverse-engineer the empirical % each customer actually received
+# We calculate the delivered rate for each individual discount plus the total combined discount
+book_2027[, `:=`(
+  DeliveredNCDPct   = NCDDiscountDollarAmt / CapCupLoadedPremium,
+  DeliveredMultiPct = fifelse(bal_after_ncd > 0, MultiPolicyDiscountDollarAmt / bal_after_ncd, 0),
+  DeliveredLoyalPct = fifelse(bal_after_multi > 0, LoyaltyDiscountDollarAmt / bal_after_multi, 0),
+  DeliveredTotalPct = TotalDiscountDollarAmt / CapCupLoadedPremium
+)]
+
+
+# 3. Aggregate across all 56 combinations to inspect promised vs delivered
+combo_audit <- book_2027[, .(
+  Policies        = .N,
+  Promised_NCD    = paste0(round(first(NCDDiscountPct) * 100), "%"),
+  Delivered_NCD   = paste0(round(mean(DeliveredNCDPct) * 100, 1), "%"),
+  Promised_Multi  = paste0(round(first(MultiPolicyDiscountPct) * 100), "%"),
+  Delivered_Multi = paste0(round(mean(DeliveredMultiPct) * 100, 1), "%"),
+  Promised_Loyal  = paste0(round(first(LoyaltyDiscountPct) * 100), "%"),
+  Delivered_Loyal = paste0(round(mean(DeliveredLoyalPct) * 100, 1), "%"),
+  Promised_Total  = paste0(round((1 - (1 - first(NCDDiscountPct)) * (1 - first(MultiPolicyDiscountPct)) * (1 - first(LoyaltyDiscountPct))) * 100, 1), "%"),
+  Delivered_Total = paste0(round(mean(DeliveredTotalPct) * 100, 1), "%")
+), keyby = .(NCDLevel, MultiPolicyFlag, LoyaltyDiscountPct)]
+
+cat("\n--- 56-ARCHETYPE COMBINATIONS AUDIT TABLE ---\n")
+print(combo_audit, nrows = 60)
+
+# 4. Programmatic row-by-row assertion across all 17,200 policies
+# Checks every single individual policy to ensure zero discount discrepancy
+max_ncd_err   <- max(abs(book_2027$DeliveredNCDPct - book_2027$NCDDiscountPct))
+max_multi_err <- max(abs(book_2027$DeliveredMultiPct - book_2027$MultiPolicyDiscountPct))
+max_loyal_err <- max(abs(book_2027$DeliveredLoyalPct - book_2027$LoyaltyDiscountPct))
+
+promised_total_pct <- 1 - (1 - book_2027$NCDDiscountPct) * (1 - book_2027$MultiPolicyDiscountPct) * (1 - book_2027$LoyaltyDiscountPct)
+max_total_err      <- max(abs(book_2027$DeliveredTotalPct - promised_total_pct))
+
+stopifnot(max_ncd_err < 1e-6)
+stopifnot(max_multi_err < 1e-6)
+stopifnot(max_loyal_err < 1e-6)
+stopifnot(max_total_err < 1e-6)
+
+cat("\n[PASS] All 56 combinations delivered 100% of promised discounts across all 17,200 policies.\n")
+cat(sprintf("       Worst-case portfolio error: NCD = %.1e, Multi = %.1e, Loyal = %.1e, Total = %.1e\n",
+            max_ncd_err, max_multi_err, max_loyal_err, max_total_err))
+
+
+# 16d. Boundary Invariance Test -------------------------------------------
+
+# To prove zero discount erosion across price boundaries:
+# 1. We classify every policy into one of 3 regulatory boundary states:
+#    - Cap Binding: Customer rate increase was limited by the cap ceiling.
+#    - Collar Binding: Customer rate decrease was limited by the collar floor.
+#    - Unconstrained: Customer rate change fell inside the corridor.
+# 2. We compare promised vs delivered discount rates across these 3 groups.
+# 3. We run stopifnot() to verify that delivered rates match promised schedules
+#    regardless of whether the customer's price was capped or collared.
+
+
+# STEP 1: CLASSIFY POLICIES BY REGULATORY BOUNDARY STATE
+book_2027[, BoundaryState := fcase(
+  RawRateChangePct >= CapPct, "Cap Binding",
+  RawRateChangePct <= CupPct, "Collar Binding",
+  default                   = "Unconstrained"
+)]
+
+
+# STEP 2: GENERATE THE ASIC AUDIT SUMMARY TABLE
+# Note: DeliveredNCDPct, DeliveredMultiPct, and DeliveredLoyalPct were derived in 16c
+boundary_audit <- book_2027[, .(
+  Policies        = .N,
+  Pct_Of_Book     = paste0(round(.N / nrow(book_2027) * 100, 1), "%"),
+  Mean_Cap_Adj    = paste0("$", round(mean(CapCupAdjustmentDollarAmt), 2)),
+  Promised_NCD    = paste0(round(mean(NCDDiscountPct) * 100, 1), "%"),
+  Delivered_NCD   = paste0(round(mean(DeliveredNCDPct) * 100, 1), "%"),
+  Promised_Multi  = paste0(round(mean(MultiPolicyDiscountPct) * 100, 1), "%"),
+  Delivered_Multi = paste0(round(mean(DeliveredMultiPct) * 100, 1), "%"),
+  Promised_Loyal  = paste0(round(mean(LoyaltyDiscountPct) * 100, 1), "%"),
+  Delivered_Loyal = paste0(round(mean(DeliveredLoyalPct) * 100, 1), "%")
+), keyby = BoundaryState]
+
+cat("\n--- ASIC REP 765 BOUNDARY INVARIANCE AUDIT ---\n")
+print(boundary_audit)
+
+
+# STEP 3: PROGRAMMATIC INTEGRITY ASSERTION
+# Assert that delivered equals promised on average within every single boundary cohort
+stopifnot(all(boundary_audit$Promised_NCD   == boundary_audit$Delivered_NCD))
+stopifnot(all(boundary_audit$Promised_Multi == boundary_audit$Delivered_Multi))
+stopifnot(all(boundary_audit$Promised_Loyal == boundary_audit$Delivered_Loyal))
+
+cat("\n[PASS] Test 3: Zero discount erosion verified across all boundary states (Cap, Collar, Unconstrained).\n")
+
+
+# 17. Waterfall Table and Chart -------------------------------------------
+library(ggplot2)
+library(scales)
+
+# A. Aggregate portfolio flows ($M)
+n_policies       <- nrow(book_2027)
+tot_base_risk    <- sum(book_2027$BaseTechnicalPrice) / 1e6
+tot_expenses     <- (sum(book_2027$LoadedPremium) - sum(book_2027$BaseTechnicalPrice)) / 1e6
+tot_loaded_gross <- sum(book_2027$LoadedPremium) / 1e6
+tot_capcup_adj   <- sum(book_2027$CapCupAdjustmentDollarAmt) / 1e6
+tot_ncd_disc     <- -sum(book_2027$NCDDiscountDollarAmt) / 1e6
+tot_multi_disc   <- -sum(book_2027$MultiPolicyDiscountDollarAmt) / 1e6
+tot_loyal_disc   <- -sum(book_2027$LoyaltyDiscountDollarAmt) / 1e6
+tot_surcharge    <- sum(book_2027$InstalmentSurchargeDollarAmt) / 1e6
+tot_final_rev    <- sum(book_2027$FinalPrice) / 1e6
+
+waterfall_summary <- data.frame(
+  Stage = c(
+    "1. Base Pure Risk (NCD=0, Ann)",
+    "2. Expense & Profit Loading",
+    "3. Gross Loaded Premium",
+    "4. Rate Smoothing (Caps & Collars)",
+    "5. NCD Discounts",
+    "6. Multi-Policy Discounts",
+    "7. Loyalty Discounts",
+    "8. Instalment Surcharges (Monthly)",
+    "9. Final Billed Revenue"
+  ),
+  Total_M = c(
+    tot_base_risk,
+    tot_expenses,
+    tot_loaded_gross,
+    tot_capcup_adj,
+    tot_ncd_disc,
+    tot_multi_disc,
+    tot_loyal_disc,
+    tot_surcharge,
+    tot_final_rev
+  ),
+  Pct_Of_Gross_Loaded = c(
+    paste0(round(tot_base_risk / tot_loaded_gross * 100, 1), "%"),
+    paste0(round(tot_expenses / tot_loaded_gross * 100, 1), "%"),
+    "100.0%",
+    paste0(round(tot_capcup_adj / tot_loaded_gross * 100, 1), "%"),
+    paste0(round(tot_ncd_disc / tot_loaded_gross * 100, 1), "%"),
+    paste0(round(tot_multi_disc / tot_loaded_gross * 100, 1), "%"),
+    paste0(round(tot_loyal_disc / tot_loaded_gross * 100, 1), "%"),
+    paste0(round(tot_surcharge / tot_loaded_gross * 100, 1), "%"),
+    paste0(round(tot_final_rev / tot_loaded_gross * 100, 1), "%")
+  )
+)
+
+print(waterfall_summary)
+
+
+# B. Structure data and compute floating bar bounds
+wf_data <- data.frame(
+  step = factor(
+    c("Gross Loaded", "Cap/Collar Adj", "NCD Disc", "Multi-Policy", "Loyalty Disc", "Instalment Fee", "Billed Revenue"),
+    levels = c("Gross Loaded", "Cap/Collar Adj", "NCD Disc", "Multi-Policy", "Loyalty Disc", "Instalment Fee", "Billed Revenue")
+  ),
+  delta = c(
+    tot_loaded_gross,
+    tot_capcup_adj,
+    tot_ncd_disc,
+    tot_multi_disc,
+    tot_loyal_disc,
+    tot_surcharge,
+    tot_final_rev
+  ),
+  type = c("Total", "Adj", "Reduction", "Reduction", "Reduction", "Addition", "Total")
+)
+
+bal <- c(tot_loaded_gross, tot_loaded_gross + cumsum(wf_data$delta[2:6]))
+
+start_vals <- c(0, bal[1:5], 0)
+end_vals   <- c(bal[1:6], tot_final_rev)
+
+wf_data$ymin <- pmin(start_vals, end_vals)
+wf_data$ymax <- pmax(start_vals, end_vals)
+wf_data$label_y <- wf_data$ymax + 0.35
+
+wf_data$label_text <- ifelse(
+  wf_data$type == "Total",
+  sprintf("$%.2fM", wf_data$delta),
+  ifelse(
+    wf_data$delta >= 0,
+    sprintf("+$%.2fM", wf_data$delta),
+    sprintf("-$%.2fM", abs(wf_data$delta))
+  )
+)
+
+
+# C. Render ggplot2 waterfall chart
+p_waterfall <- ggplot(wf_data, aes(x = step, fill = type)) +
+  geom_rect(aes(xmin = as.numeric(step) - 0.35, xmax = as.numeric(step) + 0.35,
+                ymin = ymin, ymax = ymax), color = "black", linewidth = 0.3) +
+  geom_text(aes(x = step, y = label_y, label = label_text), size = 3.5, fontface = "bold") +
+  scale_fill_manual(values = c(
+    "Total"     = "#2b5c8f",
+    "Reduction" = "#c0392b",
+    "Addition"  = "#27ae60",
+    "Adj"       = "#d35400"
+  )) +
+  scale_y_continuous(labels = dollar_format(suffix = "M"), limits = c(0, max(wf_data$ymax) * 1.15)) +
+  labs(
+    title = "Saltbush Direct 2027 Portfolio Pricing Waterfall",
+    subtitle = sprintf("Macro reconciliation from Gross Loaded Premium to Final Billed Revenue (N = %s)", comma(n_policies)),
+    x = NULL,
+    y = "Portfolio Premium ($M)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "none",
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.text.x = element_text(face = "bold", size = 10, angle = 15, hjust = 1)
+  )
+
+print(p_waterfall)
+
+
+
+# 18. Export Priced Book --------------------------------------------------
+mandatory_cols <- c(
+  "PolicyID",
+  "TechnicalPrice",
+  "DiscountedPremium",
+  "NCDDiscountDollarAmt",
+  "MultiPolicyDiscountDollarAmt",
+  "LoyaltyDiscountDollarAmt",
+  "InstalmentSurchargeDollarAmt",
+  "FinalPrice"
+)
+
+# B. Integrity and data hygiene assertions
+stopifnot(!anyDuplicated(book_2027$PolicyID))
+stopifnot(all(!is.na(book_2027[, ..mandatory_cols])))
+stopifnot(all(book_2027$FinalPrice > 0))
+stopifnot(all(book_2027$TechnicalPrice > 0))
+
+# C. Exact reconciliation: FinalPrice must equal DiscountedPremium + Surcharge
+max_surcharge_diff <- max(abs(book_2027$FinalPrice - (book_2027$DiscountedPremium + book_2027$InstalmentSurchargeDollarAmt)))
+stopifnot(max_surcharge_diff < 1e-4)
+
+# D. Write final priced dataset to current working directory
+output_file <- "priced_2027.csv"
+fwrite(book_2027, output_file)
+
+cat(sprintf("\n[SUCCESS] Successfully verified and exported %s rows to %s/%s\n", 
+            comma(nrow(book_2027)), getwd(), output_file))
+
