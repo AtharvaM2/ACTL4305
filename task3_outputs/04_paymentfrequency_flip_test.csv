@@ -1,0 +1,7 @@
+Check,Pass
+TechnicalPrice unchanged,TRUE
+LoadedPremium unchanged,TRUE
+CapCupLoadedPremium unchanged,TRUE
+DiscountedPremium unchanged,TRUE
+All discount dollars unchanged,TRUE
+FinalPrice moves by exactly the 3% instalment loading,TRUE

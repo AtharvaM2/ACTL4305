@@ -1,0 +1,21 @@
+Promise,NCD,Tenure,Multi,Policies,Promised_Multiplier,Min_Delivered,Max_Delivered,Pass
+NCD,0,0,0,16735,1,1,1,TRUE
+NCD,1,0,0,16735,0.9,0.9,0.9,TRUE
+NCD,2,0,0,16735,0.8,0.8,0.8,TRUE
+NCD,3,0,0,16735,0.7,0.7,0.7,TRUE
+NCD,4,0,0,16735,0.6,0.6,0.6,TRUE
+NCD,5,0,0,16735,0.5,0.5,0.5,TRUE
+NCD,6,0,0,16735,0.4,0.4,0.4,TRUE
+Loyalty,0,0,0,16735,1,1,1,TRUE
+Loyalty,0,2,0,15214,1,1,1,TRUE
+Loyalty,0,3,0,15214,0.97,0.97,0.97,TRUE
+Loyalty,0,5,0,15214,0.97,0.97,0.97,TRUE
+Loyalty,0,6,0,15214,0.94,0.94,0.94,TRUE
+Loyalty,0,9,0,15214,0.94,0.94,0.94,TRUE
+Loyalty,0,10,0,15214,0.9,0.9,0.9,TRUE
+Loyalty,0,15,0,15214,0.9,0.9,0.9,TRUE
+Multi-policy,0,0,0,16735,1,1,1,TRUE
+Multi-policy,0,0,1,16735,0.9,0.9,0.9,TRUE
+Combined,3,6,1,15214,0.5922,0.5922,0.5922,TRUE
+Combined,6,10,1,15214,0.324,0.324,0.324,TRUE
+"Loyalty (new business, tenure 10)",0,10,0,1521,1,1,1,TRUE
