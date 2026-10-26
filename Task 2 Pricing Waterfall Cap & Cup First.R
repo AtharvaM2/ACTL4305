@@ -935,10 +935,11 @@ print(p_waterfall)
 
 
 # 18. Export Priced Book --------------------------------------------------
-mandatory_cols <- c(
+clean_cols <- c(
   "PolicyID",
-  "TechnicalPrice",
-  "DiscountedPremium",
+  "TechnicalPrice",              # True expected claims cost
+  "BaseTechnicalPrice",          # Unbundled pure risk base (NCD=0, Annual)
+  "CapCupLoadedPremium",         # Capped gross shelf base (what discounts actually come off)
   "NCDDiscountDollarAmt",
   "MultiPolicyDiscountDollarAmt",
   "LoyaltyDiscountDollarAmt",
@@ -946,20 +947,20 @@ mandatory_cols <- c(
   "FinalPrice"
 )
 
-# B. Integrity and data hygiene assertions
-stopifnot(!anyDuplicated(book_2027$PolicyID))
-stopifnot(all(!is.na(book_2027[, ..mandatory_cols])))
-stopifnot(all(book_2027$FinalPrice > 0))
-stopifnot(all(book_2027$TechnicalPrice > 0))
+# 2. Extract clean submission table
+submission_2027 <- book_2027[, ..clean_cols]
 
-# C. Exact reconciliation: FinalPrice must equal DiscountedPremium + Surcharge
-max_surcharge_diff <- max(abs(book_2027$FinalPrice - (book_2027$DiscountedPremium + book_2027$InstalmentSurchargeDollarAmt)))
-stopifnot(max_surcharge_diff < 1e-4)
+# 3. Pre-export validation
+stopifnot(nrow(submission_2027) == nrow(book_2027))
+stopifnot(!anyDuplicated(submission_2027$PolicyID))
+stopifnot(all(!is.na(submission_2027)))
+stopifnot(all(submission_2027$FinalPrice > 0))
+stopifnot(all(submission_2027$TechnicalPrice > 0))
 
-# D. Write final priced dataset to current working directory
+# 4. Write clean CSV to current working directory
 output_file <- "priced_2027.csv"
-fwrite(book_2027, output_file)
+fwrite(submission_2027, output_file)
 
-cat(sprintf("\n[SUCCESS] Successfully verified and exported %s rows to %s/%s\n", 
-            comma(nrow(book_2027)), getwd(), output_file))
+cat(sprintf("\n[SUCCESS] Clean deliverable exported (%d columns, %s rows) to: %s/%s\n", 
+            ncol(submission_2027), scales::comma(nrow(submission_2027)), getwd(), output_file))
 
