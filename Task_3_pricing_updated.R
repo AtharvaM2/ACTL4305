@@ -183,8 +183,7 @@ t3_price_book <- function(b) {
 priced_2028 <- t3_price_book(book_2028)
 
 # Diagnostic only: what the Task 1/2 model (with PaymentFrequency) would have said
-lv_pf <- levels(book_2028$PaymentFrequency)
-book_pf_base <- copy(book_2028)[, `:=`(NCDLevel = 0L, PaymentFrequency = factor("Annual", levels = lv_pf))]
+book_pf_base <- copy(book_2028)[, `:=`(NCDLevel = 0L, PaymentFrequency = "Annual")]
 sev_hat <- predict(fit_sev_2028, book_2028, type = "response")
 priced_2028[, TechnicalPrice_withPF := predict(fit_freq_pf, book_2028, type = "response") * sev_hat]
 priced_2028[, LoadedPremium_withPF := (predict(fit_freq_pf, book_pf_base, type = "response") *
@@ -301,8 +300,8 @@ cat("All promised discounts delivered in full for", sum(promise_results$Policies
 # 7. Impact of removing PaymentFrequency ---------------------------------------
 # (a) Policy flip test: flipping PaymentFrequency must change ONLY the 3% instalment
 flip <- copy(book_2028)
-flip[, PaymentFrequency := factor(fifelse(PaymentFrequency == "Monthly", "Annual", "Monthly"),
-                                  levels = lv_pf)]
+flip[, PaymentFrequency := fifelse(PaymentFrequency == "Monthly", "Annual", "Monthly")]
+
 flipped <- t3_price_book(flip)
 was_monthly <- priced_2028$PaymentFrequency == "Monthly"
 flip_checks <- data.table(
@@ -447,18 +446,19 @@ raw_pct <- renewals$RawRateChange * 100
 xr <- quantile(raw_pct, c(0.001, 0.999))
 draw_raw <- function() {
   hist(raw_pct, breaks = 60, col = "steelblue", border = "white",
-       main = "Distribution of Raw Rate Changes (2028 vs 2027 Base, renewals)",
+       main = "Distribution of Raw Rate Changes (2028 Loaded Premium vs 2027 Baseline)",
        xlab = "Raw Rate Change (%)", xlim = c(floor(xr[1]), ceiling(xr[2])), xaxt = "n")
   axis(side = 1, at = pretty(c(floor(xr[1]), ceiling(xr[2])), n = 12))
-  abline(v = -15, col = "purple", lty = 2, lwd = 2)
+  abline(v = -20, col = "purple", lty = 2, lwd = 2)
   abline(v = -10, col = "blue",   lty = 2, lwd = 1.5)
+  abline(v = -5,  col = "cyan4",  lty = 2, lwd = 1.5)
   abline(v = 0,   col = "gray40", lty = 2, lwd = 1.5)
   abline(v = 5,   col = "green3", lty = 2, lwd = 2)
   abline(v = 15,  col = "orange", lty = 2, lwd = 2)
   abline(v = 30,  col = "red",    lty = 2, lwd = 2)
   legend("topright", bty = "n", cex = 0.85, lty = 2, lwd = 2,
-         legend = c("Cup -15%", "Cup -10%", "0% Base", "5% Tier", "15% Lapse Cliff", "30% Severe Cliff"),
-         col = c("purple", "blue", "gray40", "green3", "orange", "red"))
+         legend = c("-20% cup switch", "-10% cup", "-5% cup", "0%", "5%", "15%", "30%"),
+         col = c("purple", "blue", "cyan4", "gray40", "green3", "orange", "red"))
 }
 save_base("01_raw_rate_change_distribution", draw_raw)
 
@@ -505,12 +505,12 @@ cap_tier[, Tier := factor(Tier, levels = c(tier_labels, "New\nbusiness"))]
 p4 <- ggplot(cap_tier, aes(Tier, LossRatio, fill = LossRatio > 100)) +
   geom_col(width = 0.7) +
   geom_hline(yintercept = 100, colour = "red", linewidth = 0.8) +
-  geom_text(aes(label = paste0(sprintf("%.0f%%", LossRatio), "\nn=", comma(Policies))),
+  geom_text(aes(label = paste0(sprintf("%.0f%%", LossRatio), "\nn = ", comma(Policies))),
             vjust = -0.3, size = 3.2, lineheight = 0.9) +
   scale_fill_manual(values = c(`FALSE` = "steelblue", `TRUE` = "firebrick"), guide = "none") +
   scale_y_continuous(expand = expansion(mult = c(0, 0.18))) +
-  labs(title = "2028 loss ratio by raw rate-change tier",
-       subtitle = "Tier = raw change vs the 2027 pre-discount premium; the cap applies within each tier",
+  labs(title = "2028 Loss Ratio by Raw Rate-change Tier",
+       subtitle = "Tier = Raw Change vs the 2027 pre-discount premium",
        x = "Raw rate change tier", y = "Loss ratio (%)")
 save_gg(p4, "04_loss_ratio_by_cap_tier", w = 9)
 
@@ -545,14 +545,17 @@ wf[, Lab := vapply(strwrap(Step, 12, simplify = FALSE), paste, character(1), col
 p6 <- ggplot(wf) +
   geom_rect(aes(xmin = i - 0.38, xmax = i + 0.38, ymin = pmin(Start, End), ymax = pmax(Start, End), fill = Type)) +
   geom_text(aes(x = i, y = pmax(Start, End),
-                label = ifelse(Type == "Total", sprintf("$%.1fM", Amount_M), sprintf("%+.1fM", Amount_M))),
+                label = ifelse(Type == "Total",
+                               sprintf("$%.1fM", Amount_M),
+                               sprintf("%s$%.1fM", ifelse(Amount_M < 0, "-", "+"), abs(Amount_M)))),
             vjust = -0.5, size = 3.3) +
   scale_x_continuous(breaks = wf$i, labels = wf$Lab) +
   scale_fill_manual(values = c(Total = "steelblue", Decrease = "firebrick", Increase = "darkgreen")) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(title = "2028 premium waterfall: loaded premium to final premium",
-       subtitle = "Discounts are applied after the cap/cup, so they are delivered in full",
-       x = NULL, y = "$ million", fill = NULL)
+  labs(title = "2028 Premium Waterfall",
+       x = NULL, y = "$ million", fill =
+         
+         NULL)
 save_gg(p6, "06_waterfall_2028", w = 9)
 
 # 7. Cap / cup status: 2027 -> 2028 (compounding) ----------------------------------
@@ -572,20 +575,19 @@ save_gg(p7, "07_cap_cup_status_transitions", w = 7, h = 5)
 # 8. Final-price change by NCD movement (why the tail is wide) ------------------------
 if (!exists("renewal_book_2027")) renewal_book_2027 <- fread("renewal_book_2027.csv")
 renewals[renewal_book_2027, on = "PolicyID", NCD_2027 := i.NCDLevel]
-renewals[, NCDMove := factor(fcase(NCDLevel < NCD_2027, "NCD down\n(claim in 2027)",
-                                   NCDLevel > NCD_2027, "NCD up",
+renewals[, NCDMove := factor(fcase(NCDLevel < NCD_2027, "NCD decrease\n(claim occurs in 2027)",
+                                   NCDLevel > NCD_2027, "NCD increase",
                                    default = "NCD unchanged"),
-                             levels = c("NCD down\n(claim in 2027)", "NCD unchanged", "NCD up"))]
+                             levels = c("NCD decrease\n(claim occurs in 2027)", "NCD unchanged", "NCD increase"))]
 move_n <- renewals[, .(N = .N, Med = median(FinalChange)), keyby = NCDMove]
 p8 <- ggplot(renewals, aes(NCDMove, FinalChange)) +
   geom_boxplot(fill = "steelblue", alpha = 0.6, outlier.alpha = 0.15, outlier.size = 0.7) +
   geom_hline(yintercept = 0, colour = "grey30", linetype = 2) +
-  geom_text(data = move_n, aes(y = -0.45, label = paste0("n=", comma(N), "\nmedian ", percent(Med, accuracy = 0.1))),
+  geom_text(data = move_n, aes(y = -0.45, label = paste0("n = ", comma(N), "\nmedian: ", percent(Med, accuracy = 0.1))),
             size = 3.2, lineheight = 0.9) +
   scale_y_continuous(labels = percent) +
-  labs(title = "Final-price change vs 2027, by NCD movement",
-       subtitle = "The cap/cup limits the pre-discount premium only;\nthe customer's own NCD change flows through in full",
-       x = NULL, y = "Change in final price")
+  labs(title = "Final Price Change vs 2027, by NCD Movement",
+       x = NULL, y = "Change in Final Price")
 save_gg(p8, "08_final_price_change_by_ncd_move")
 
 # 9. Loyalty tax: renewal price vs equivalent new customer ----------------------------
