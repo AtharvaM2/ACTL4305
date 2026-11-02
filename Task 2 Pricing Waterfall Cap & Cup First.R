@@ -959,8 +959,23 @@ stopifnot(all(submission_2027$TechnicalPrice > 0))
 
 # 4. Write clean CSV to current working directory
 output_file <- "priced_2027.csv"
-fwrite(submission_2027, output_file)
 
-cat(sprintf("\n[SUCCESS] Clean deliverable exported (%d columns, %s rows) to: %s/%s\n", 
-            ncol(submission_2027), scales::comma(nrow(submission_2027)), getwd(), output_file))
+# 19. Baseline file for Task 3 --------------------------------------------
+# Alias the column names Task 3 expects (same values, different names)
+book_2027[, `:=`(
+  RawRateChange             = RawRateChangePct,
+  EffectiveRateChange       = EffectiveRateChangePct,
+  NCDDiscountDollar         = NCDDiscountDollarAmt,
+  MultiPolicyDiscountDollar = MultiPolicyDiscountDollarAmt,
+  LoyaltyDiscountDollar     = LoyaltyDiscountDollarAmt,
+  TotalDiscountDollar       = TotalDiscountDollarAmt
+)]
 
+task3_baseline_cols <- c("PolicyID", "LegacyGrossBase_2026", "TechnicalPrice", "LoadedPremium",
+                         "RawRateChange", "EffectiveRateChange", "CapCupLoadedPremium", "FinalPrice",
+                         "NCDDiscountDollar", "MultiPolicyDiscountDollar",
+                         "LoyaltyDiscountDollar", "TotalDiscountDollar")
+stopifnot(all(task3_baseline_cols %in% names(book_2027)),
+          !anyDuplicated(book_2027$PolicyID))
+fwrite(book_2027[, ..task3_baseline_cols], "priced_2027.csv")
+cat("Wrote priced_2027.csv for Task 3:", nrow(book_2027), "policies\n")
