@@ -488,8 +488,8 @@ p3 <- ggplot(lr_ncd, aes(Label, LossRatio, fill = LossRatio > 100)) +
   geom_text(aes(label = sprintf("%.0f%%", LossRatio)), vjust = -0.4, size = 3.5) +
   scale_fill_manual(values = c(`FALSE` = "steelblue", `TRUE` = "firebrick"), guide = "none") +
   scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
-  labs(title = "2028 loss ratio by NCD level",
-       subtitle = "Aggregate claims / final premium.\nThe NCD 5-6 discounts are not funded by the loaded premium.",
+  labs(title = "2028 Loss Ratio by NCD Level",
+       subtitle = "NCD 5-6 discounts are not funded by the loaded premium.",
        x = NULL, y = "Loss ratio (%)")
 save_gg(p3, "03_loss_ratio_by_ncd")
 
@@ -563,13 +563,17 @@ trans <- renewals[, .N, by = .(Status_2027, Status_2028)]
 trans[, `:=`(Status_2027 = factor(Status_2027, levels = rev(status_lvls)),
              Status_2028 = factor(Status_2028, levels = status_lvls))]
 trans[, RowShare := N / sum(N), by = Status_2027]
+
 p7 <- ggplot(trans, aes(Status_2028, Status_2027, fill = N)) +
   geom_tile(colour = "white", linewidth = 1) +
   geom_text(aes(label = paste0(comma(N), "\n(", percent(RowShare, accuracy = 1), " of row)")), size = 3.6) +
   scale_fill_gradient(low = "grey95", high = "steelblue", guide = "none") +
-  labs(title = "Cap / cup status of each renewal: 2027 vs 2028",
-       subtitle = "Capped = held below the technical target; Cupped = held above it.\nNobody becomes newly constrained in 2028.",
-       x = "2028 status", y = "2027 status")
+  labs(
+    title    = "Cap / Cup Status of each Renewal (2027 vs 2028)",
+    subtitle = "Capped = held below the technical target.\nCupped = held above the technical target.",
+    x = "2028 Status",
+    y = "2027 Status"
+  )
 save_gg(p7, "07_cap_cup_status_transitions", w = 7, h = 5)
 
 # 8. Final-price change by NCD movement (why the tail is wide) ------------------------
@@ -599,9 +603,9 @@ p9 <- ggplot(renewals, aes(VsNewCustomer, fill = Status_2028)) +
   scale_x_continuous(labels = percent) +
   scale_y_sqrt(breaks = c(0, 50, 250, 1000, 3000)) +
   scale_fill_manual(values = status_cols) +
-  labs(title = "Renewal price vs the price of a new customer with the same risk profile",
-       subtitle = "Right of 0 = renewal pays MORE than a new customer after its loyalty discount.\nOnly cupped customers are there.",
-       x = "Final price vs new-customer equivalent", y = "Renewals (square-root scale)", fill = "2028 status")
+  labs(title = "Renewal Price vs the Price of a New Customer with the same Risk Profile",
+       subtitle = "On the right of 0: Renewals pays more than a new customer after its loyalty discount.",
+       x = "Final Price vs New Customer Equivalent", y = "Renewals", fill = "2028 Status")
 save_gg(p9, "09_loyalty_tax_vs_new_customer", w = 9, h = 6)
 
 # 10. PaymentFrequency: expected claims vs price basis after removal -------------------
@@ -612,15 +616,17 @@ p10 <- ggplot(pf_impact, aes(PaymentFrequency, Cost_vs_Priced, fill = Cost_vs_Pr
   coord_cartesian(ylim = c(0.95, 1.05)) +
   scale_fill_manual(values = c(`FALSE` = "steelblue", `TRUE` = "firebrick"), guide = "none") +
   scale_y_continuous(labels = function(x) sprintf("%+.0f%%", 100 * (x - 1))) +
-  labs(title = "Expected claims vs price basis once PaymentFrequency is removed",
-       subtitle = sprintf("Monthly payers: expected claims %+.1f%% vs price basis; annual payers: %+.1f%%",
-                          100 * (pf_impact[PaymentFrequency == "Monthly", Cost_vs_Priced] - 1),
-                          100 * (pf_impact[PaymentFrequency == "Annual", Cost_vs_Priced] - 1)),
-       x = NULL, y = "Expected claims (with PaymentFrequency) vs technical price basis")
+  labs(
+    title    = "Expected Claims vs Price Basis once PaymentFrequency is Removed",
+    subtitle = sprintf("Monthly: %+.1f%% | Annual: %+.1f%%",
+                       100 * (pf_impact[PaymentFrequency == "Monthly", Cost_vs_Priced] - 1),
+                       100 * (pf_impact[PaymentFrequency == "Annual",  Cost_vs_Priced] - 1)),
+    x = NULL,
+    y = "Expected claims vs Technical Price Basis"
+  )
 save_gg(p10, "10_paymentfrequency_cost_vs_price", w = 7, h = 5)
 
 cat("\nSaved 10 graphs to ", graph_dir, "/\n", sep = "")
-
 # 10. Export ------------------------------------------------------------------------
 export_2028 <- priced_2028[, .(
   PolicyID, NewBusinessFlag, TechnicalPrice, LoadedPremium, CapCupLoadedPremium_2027,
