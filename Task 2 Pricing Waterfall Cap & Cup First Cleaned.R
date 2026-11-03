@@ -936,7 +936,7 @@ print(p_waterfall)
 
 # 18a. Report Figures ------------------------------------------------------
 
-# 1. Base Technical Price & Commercial Loading (Section 2.1 & 2.2)[cite: 9]
+# 1. Base Technical Price & Commercial Loading (Section 2.1 & 2.2)
 cat("1. COMMERCIAL EXPENSE & PROFIT LOADING\n")
 cat(sprintf("Mean Base Technical Price (NCD=0, Annual) : $%.2f\n", mean(book_2027$BaseTechnicalPrice))) #
 cat(sprintf("Mean Loaded Shelf Premium                 : $%.2f\n", mean(book_2027$LoadedPremium))) #
@@ -944,7 +944,7 @@ cat(sprintf("Min / Max Loaded Shelf Premium            : $%.2f / $%.2f\n",
             min(book_2027$LoadedPremium), max(book_2027$LoadedPremium))) #
 cat(sprintf("Total Portfolio Gross Loaded Premium      : $%.2fM\n\n", sum(book_2027$LoadedPremium) / 1e6)) #
 
-# 2. 2026 Legacy Baseline & Raw Rate Movement (Section 2.2)[cite: 8]
+# 2. 2026 Legacy Baseline & Raw Rate Movement (Section 2.2)
 cat("2. 2026 UNBUNDLED BASELINE & RAW RATE MOVEMENT\n")
 cat(sprintf("Mean 2026 Legacy Gross Base               : $%.2f\n", mean(book_2027$LegacyGrossBase_2026))) #
 cat(sprintf("Min / Max 2026 Legacy Gross Base          : $%.2f / $%.2f\n", 
@@ -952,30 +952,30 @@ cat(sprintf("Min / Max 2026 Legacy Gross Base          : $%.2f / $%.2f\n",
 cat(sprintf("Mean Raw Rate Change (Gross 27 vs 26)     : %+.2f%%\n", mean(book_2027$RawRateChangePct) * 100)) #
 cat(sprintf("Mean Effective Rate Change (Post-Cap/Cup) : %+.2f%%\n\n", mean(book_2027$EffectiveRateChangePct) * 100)) #
 
-# 3. ASIC REP 765 p. 18 Worked Example ($100 Base, -5% Floor, 10% Discount)[cite: 6]
+# 3. ASIC REP 765 p. 18 Worked Example ($100 Base, -5% Floor, 10% Discount)
 cat("3. TABLE 2.1: ASIC REP 765 p. 18 WORKED EXAMPLE VALUES\n")
 ex_base          <- 100.00
-ex_floor_val     <- 95.00 # -5% collar floor[cite: 6]
-ex_disc_rate     <- 0.10  # 10% promised discount[cite: 6]
+ex_floor_val     <- 95.00 # -5% collar floor
+ex_disc_rate     <- 0.10  # 10% promised discount
 
-# Flawed sequence: Discount first, floor last[cite: 6]
-flawed_net       <- ex_base * (1 - ex_disc_rate)          # $90.00[cite: 6]
-flawed_billed    <- max(flawed_net, ex_floor_val)         # $95.00 (floor binds)[cite: 6]
-flawed_dlv_disc  <- ex_base - flawed_billed               # $5.00[cite: 6]
-flawed_dlv_pct   <- (flawed_dlv_disc / ex_base) * 100     # 5.0%[cite: 6]
+# Flawed sequence: Discount first, floor last
+flawed_net       <- ex_base * (1 - ex_disc_rate)          # $90.00
+flawed_billed    <- max(flawed_net, ex_floor_val)         # $95.00 (floor binds)
+flawed_dlv_disc  <- ex_base - flawed_billed               # $5.00
+flawed_dlv_pct   <- (flawed_dlv_disc / ex_base) * 100     # 5.0%
 
 # Compliant sequence: Floor first, discount last
-saltbush_base    <- max(ex_base * 0.95, ex_floor_val)     # $95.00[cite: 6]
+saltbush_base    <- max(ex_base * 0.95, ex_floor_val)     # $95.00
 saltbush_disc    <- saltbush_base * ex_disc_rate          # $9.50
 saltbush_billed  <- saltbush_base - saltbush_disc         # $85.50
 saltbush_dlv_pct <- (saltbush_disc / saltbush_base) * 100 # 10.0%
 
 cat(sprintf("Flawed Engine Billed Premium              : $%.2f (Delivered: %.1f%% | Overcharged: $%.2f)\n", 
-            flawed_billed, flawed_dlv_pct, flawed_billed - saltbush_billed)) #[cite: 6]
+            flawed_billed, flawed_dlv_pct, flawed_billed - saltbush_billed)) 
 cat(sprintf("Saltbush Compliant Billed Premium         : $%.2f (Delivered: %.1f%% in full)\n\n", 
             saltbush_billed, saltbush_dlv_pct)) #
 
-# 4. Commercial Discounts & Multiplicative Stacking (Section 2.4)[cite: 10]
+# 4. Commercial Discounts & Multiplicative Stacking (Section 2.4)
 cat("--- 4. COMMERCIAL DISCOUNTS & STACKING IMPACT ---\n")
 cat(sprintf("Mean Capped Shelf Base (Pre-Discount)     : $%.2f\n", mean(book_2027$CapCupLoadedPremium))) #
 cat(sprintf("Mean NCD Savings Delivered                : -$%.2f\n", mean(book_2027$NCDDiscountDollarAmt))) #
@@ -985,12 +985,12 @@ cat(sprintf("Mean Total Discount Delivered             : -$%.2f (%.1f%% of Cappe
             mean(book_2027$TotalDiscountDollarAmt), mean(book_2027$TotalDiscountPct) * 100)) #
 cat(sprintf("Max Cumulative Stacking Delivered (Mult.) : %.1f%%\n", max(book_2027$TotalDiscountPct) * 100)) #
 
-# Compare with hypothetical additive stacking on highest tier (NCD 6 + Multi + 10+ yrs)[cite: 10]
+# Compare with hypothetical additive stacking on highest tier (NCD 6 + Multi + 10+ yrs)
 high_tier_count <- nrow(book_2027[NCDLevel == 6 & MultiPolicyFlag == 1 & TenureYears >= 10]) #
 cat(sprintf("Policies Eligible for Max Stack (NCD6+MP+10y): %d (Additive = 80.0%% vs Mult = 67.6%%)\n\n", 
-            high_tier_count)) #[cite: 10]
+            high_tier_count)) #
 
-# 5. Instalment Surcharges (Section 2.4)[cite: 11]
+# 5. Instalment Surcharges (Section 2.4)
 cat("--- 5. INSTALMENT SURCHARGES (3%% ON MONTHLY PAYERS) ---\n")
 monthly_pct <- mean(book_2027$InstalmentSurchargePct > 0) * 100 #
 cat(sprintf("Monthly Payer Proportion                  : %.1f%%\n", monthly_pct)) #
