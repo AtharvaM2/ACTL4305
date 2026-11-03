@@ -1,10 +1,8 @@
-# ============================================================================
 # TASK 3: PRICE THE 2028 RENEWAL BOOK
-# ============================================================================
-# HOW TO RUN: run your Task 2 script first, in the same R session. This script
-# needs `data`, `renewal_book_2028` (from Data Cleaning and EDA.R) and the
-# priced 2027 book `book_2027`. If `book_2027` is not in memory it falls back to
-# "priced_2027.csv", which this script writes whenever `book_2027` is available.
+# Run Task 2 script first in the same R session.
+# This script needs "data", "renewal_book_2028" (from Data Cleaning and EDA.R) and the
+# priced 2027 book "book_2027". If "book_2027" is not in memory it falls back to
+# "priced_2027.csv", which this script writes whenever "book_2027" is available.
 #
 # WATERFALL (same order as Task 2, so promised discounts survive the full run):
 #   1. Technical price = frequency x severity, PaymentFrequency REMOVED
@@ -16,13 +14,13 @@
 #   5. 3% instalment loading, applied last, monthly payers only
 #
 # BASELINE CARRIED FORWARD: 2027 CapCupLoadedPremium (pre-discount,
-# pre-instalment, post cap/cup). Justification: the 2028 loaded premium is also
-# a pre-discount (NCD 0) base, so the cap/cup compares like with like. Carrying
-# forward the 2027 FinalPrice would embed last year's NCD, loyalty, multi-policy
-# and instalment effects in the baseline, and those discounts would then be
-# applied a second time in 2028 (double counting). It would also let a change
-# in NCD or tenure move the "capped" figure instead of the discount.
-# ============================================================================
+# pre-instalment, post cap/cup). 
+# Justification: the 2028 loaded premium is also a pre-discount (NCD 0) base,
+# so the cap/cup compares like with like. 
+# Carrying forward the 2027 FinalPrice would embed last year's NCD, loyalty,
+# multi-policy and instalment effects in the baseline, and those discounts would
+# then be applied a second time in 2028 (double counting). 
+# It would also let a change in NCD or tenure move the "capped" figure instead of the discount
 
 library(data.table)
 
@@ -61,7 +59,8 @@ NCD_RATES      <- c("0" = 0.00, "1" = 0.10, "2" = 0.20, "3" = 0.30,
                     "4" = 0.40, "5" = 0.50, "6" = 0.60)
 MULTI_RATE     <- 0.10
 INSTAL_RATE    <- 0.03
-YEAR_INDEX_2028 <- 2L     # severity trend: 2028 - 2026 (same assumption as Task 2)
+# severity trend: 2028 - 2026 (same assumption as Task 2)
+YEAR_INDEX_2028 <- 2L
 
 # Same tiered cap / cup design as Task 2, applied to the 2028 raw rate change
 CAP_BREAKS <- c(-Inf, 0.05, 0.15, 0.225, 0.30, 0.60, Inf)
@@ -69,9 +68,8 @@ CAP_VALUES <- c(0.05, 0.10, 0.18, 0.25, 0.35, 0.50)
 CUP_BREAKS <- c(-Inf, -0.20, Inf)
 CUP_VALUES <- c(-0.10, -0.05)
 
-# 2. Refit Task 1 / Task 2 models on 2023-2026, PaymentFrequency removed -----
-# Formulas are the stepwise-AIC selections used in Task 2. Edit here if your
-# Task 1 selections differ.
+# 2. Refit Task 1 / Task 2 models on 2023-2026, PaymentFrequency removed
+# Formulas are the stepwise-AIC selections used in Task 2
 data[, YearIndex := Year - 2026]
 sev_train <- copy(data[ClaimNb > 0])
 sev_train[, AverageClaim := ClaimAmount / ClaimNb]
@@ -79,9 +77,10 @@ sev_train[, AverageClaim := ClaimAmount / ClaimNb]
 freq_formula_pf <- ClaimNb ~ RiskZone + AnnualKms + GaragingLocation + VehicleUse +
   PaymentFrequency + factor(ExcessChosen) + factor(NCDLevel)
 freq_formula_2028 <- update(freq_formula_pf, . ~ . - PaymentFrequency)
-
-fit_freq_pf   <- glm(freq_formula_pf,   family = poisson(link = "log"), data = data)  # Task 1/2 model (diagnostic only)
-fit_freq_2028 <- glm(freq_formula_2028, family = poisson(link = "log"), data = data)  # 2028 pricing model
+# Task 1/2 model (diagnostic only)
+fit_freq_pf   <- glm(freq_formula_pf,   family = poisson(link = "log"), data = data)
+# 2028 pricing model
+fit_freq_2028 <- glm(freq_formula_2028, family = poisson(link = "log"), data = data)
 fit_sev_2028  <- glm(AverageClaim ~ VehValueBand + VehicleType + RiskZone +
                        factor(ExcessChosen) + YearIndex,
                      family = Gamma(link = "log"), weights = ClaimNb, data = sev_train)
@@ -179,10 +178,10 @@ t3_price_book <- function(b) {
   d
 }
 
-# 5. Price the 2028 book --------------------------------------------------------
+# 5. Price the 2028 book -------------------------------------------------------
 priced_2028 <- t3_price_book(book_2028)
 
-# Diagnostic only: what the Task 1/2 model (with PaymentFrequency) would have said
+# Diagnostic only: what the Task 1/2 model (with PaymentFrequency) would be
 book_pf_base <- copy(book_2028)[, `:=`(NCDLevel = 0L, PaymentFrequency = "Annual")]
 sev_hat <- predict(fit_sev_2028, book_2028, type = "response")
 priced_2028[, TechnicalPrice_withPF := predict(fit_freq_pf, book_2028, type = "response") * sev_hat]
@@ -241,6 +240,7 @@ portfolio_2028 <- rbind(
   t3_portfolio(renewals, "Renewals only", renewals$TechnicalPrice),
   t3_portfolio(priced_2028[IsNewBusiness == TRUE], "New business only",
                priced_2028[IsNewBusiness == TRUE, TechnicalPrice]))
+
 # (The with-PaymentFrequency model gives the same portfolio total of expected claims,
 # because a Poisson GLM with an intercept reproduces total claims; it only moves cost
 # between annual and monthly payers. See pf_impact in Section 7.)
@@ -250,9 +250,10 @@ fwrite(portfolio_2028, file.path(t3_out, "02_portfolio_summary_2028.csv"))
 # 6. Promise tests through the FULL 2028 waterfall --------------------------------
 # End-to-end counterfactuals: set every policy to a given NCD / tenure / multi-policy
 # status, price it through the whole waterfall, and compare with the same policy at
-# (NCD 0, tenure 0, no multi-policy). The ratio of final prices must equal the
-# promised multiplier, whatever the cap / cup did. Expected values use a separate
-# lookup (findInterval), independent of the pipeline code.
+# (NCD 0, tenure 0, no multi-policy). 
+# The ratio of final prices must equal the promised multiplier, whatever the
+# cap / cup did. Expected values use a separate lookup (findInterval),
+# independent of the pipeline code.
 LOY_FROM <- c(0, 3, 6, 10); LOY_RATE <- c(0, 0.03, 0.06, 0.10)
 expected_multiplier <- function(ncd, ten, multi)
   (1 - NCD_RATES[[as.character(ncd)]]) * (1 - LOY_RATE[findInterval(ten, LOY_FROM)]) *
@@ -398,25 +399,20 @@ cat("\nRenewals cupped in BOTH years :", renewals[Cupped & Cupped_2027, .N], "\n
 cat("Renewals capped in BOTH years :", renewals[Capped & Capped_2027, .N], "\n")
 cat("Mean premium above new-customer equivalent, cupped both years: ",
     sprintf("%.1f%%", 100 * renewals[Cupped & Cupped_2027, mean(VsNewCustomer)]), "\n")
-# ============================================================================
+
 # 9. GRAPHS  (append to the end of task3_pricing_2028.R)
-# ============================================================================
-# Uses objects already created above: priced_2028, renewals, bridge_2028,
-# pf_impact, CAP_BREAKS, CAP_VALUES, t3_out. PNGs go to task3_outputs/graphs/.
-#
-# Graphs 1-4 repeat the Task 2 graphs / tables for the 2028 book:
+# Graphs 1-4 repeat the Task 2 graphs / tables for the 2028 book
 #   1. Distribution of raw rate changes (with the lapse-risk thresholds)
 #   2. Distribution of individual policy loss ratios
-#   3. Loss ratio by NCD level            (Task 2 table "Loss ratio by NCD level")
-#   4. Loss ratio by cap tier             (Task 2 table "Policy distribution across cap tiers")
+#   3. Loss ratio by NCD level, (Task 2 table "Loss ratio by NCD level")
+#   4. Loss ratio by cap tier, (Task 2 table "Policy distribution across cap tiers")
 # Graphs 5-10 are new and support the Task 3 discussion:
-#   5. Lapse-risk tiers, 2027 vs 2028     (compounding)
+#   5. Lapse-risk tiers, 2027 vs 2028, (compounding)
 #   6. Waterfall from loaded to final premium
-#   7. Cap / cup status, 2027 -> 2028     (compounding)
+#   7. Cap / cup status, 2027 -> 2028, (compounding)
 #   8. Final-price change by NCD movement (why the tail is so wide)
 #   9. Renewal price vs equivalent new customer, by loyalty band (loyalty tax)
 #  10. PaymentFrequency: expected claims vs price basis after removal
-# ============================================================================
 
 library(ggplot2)
 library(scales)
@@ -514,7 +510,7 @@ p4 <- ggplot(cap_tier, aes(Tier, LossRatio, fill = LossRatio > 100)) +
        x = "Raw rate change tier", y = "Loss ratio (%)")
 save_gg(p4, "04_loss_ratio_by_cap_tier", w = 9)
 
-# 5. Lapse-risk tiers, 2027 vs 2028 (compounding) ----------------------------------
+# 5. Lapse-risk tiers, 2027 vs 2028 (compounding) ------------------------------
 tier_of <- function(x) factor(fcase(x <= 0.05, "0-5%", x <= 0.15, "5-15%", x <= 0.30, "15-30%",
                                     default = ">30%"),
                               levels = c("0-5%", "5-15%", "15-30%", ">30%"))
@@ -532,7 +528,7 @@ p5 <- ggplot(lapse_cmp, aes(Tier, Share, fill = Year)) +
        x = "Effective rate change after cap/cup", y = "Share of renewals", fill = NULL)
 save_gg(p5, "05_lapse_tiers_2027_vs_2028")
 
-# 6. Waterfall: loaded premium -> final premium ------------------------------------
+# 6. Waterfall: loaded premium -> final premium --------------------------------
 wf <- copy(bridge_2028)
 wf[, Amount_M := Amount / 1e6]
 cum <- cumsum(wf$Amount_M[1:6])
@@ -576,7 +572,7 @@ p7 <- ggplot(trans, aes(Status_2028, Status_2027, fill = N)) +
   )
 save_gg(p7, "07_cap_cup_status_transitions", w = 7, h = 5)
 
-# 8. Final-price change by NCD movement (why the tail is wide) ------------------------
+# 8. Final-price change by NCD movement (why the tail is wide) -----------------
 if (!exists("renewal_book_2027")) renewal_book_2027 <- fread("renewal_book_2027.csv")
 renewals[renewal_book_2027, on = "PolicyID", NCD_2027 := i.NCDLevel]
 renewals[, NCDMove := factor(fcase(NCDLevel < NCD_2027, "NCD decrease\n(claim occurs in 2027)",
@@ -594,7 +590,7 @@ p8 <- ggplot(renewals, aes(NCDMove, FinalChange)) +
        x = NULL, y = "Change in Final Price")
 save_gg(p8, "08_final_price_change_by_ncd_move")
 
-# 9. Loyalty tax: renewal price vs equivalent new customer ----------------------------
+# 9. Loyalty tax: renewal price vs equivalent new customer ---------------------
 renewals[, Status_2028 := factor(Status_2028, levels = status_lvls)]
 p9 <- ggplot(renewals, aes(VsNewCustomer, fill = Status_2028)) +
   geom_histogram(binwidth = 0.02, boundary = 0, colour = "white", linewidth = 0.1) +
@@ -608,7 +604,7 @@ p9 <- ggplot(renewals, aes(VsNewCustomer, fill = Status_2028)) +
        x = "Final Price vs New Customer Equivalent", y = "Renewals", fill = "2028 Status")
 save_gg(p9, "09_loyalty_tax_vs_new_customer", w = 9, h = 6)
 
-# 10. PaymentFrequency: expected claims vs price basis after removal -------------------
+# 10. PaymentFrequency: expected claims vs price basis after removal -----------
 p10 <- ggplot(pf_impact, aes(PaymentFrequency, Cost_vs_Priced, fill = Cost_vs_Priced > 1)) +
   geom_col(width = 0.5) +
   geom_hline(yintercept = 1, colour = "grey30") +
@@ -627,7 +623,7 @@ p10 <- ggplot(pf_impact, aes(PaymentFrequency, Cost_vs_Priced, fill = Cost_vs_Pr
 save_gg(p10, "10_paymentfrequency_cost_vs_price", w = 7, h = 5)
 
 cat("\nSaved 10 graphs to ", graph_dir, "/\n", sep = "")
-# 10. Export ------------------------------------------------------------------------
+# 10. Export -------------------------------------------------------------------
 export_2028 <- priced_2028[, .(
   PolicyID, NewBusinessFlag, TechnicalPrice, LoadedPremium, CapCupLoadedPremium_2027,
   RawRateChange, EffectiveRateChange, Capped, Cupped, CapCupLoadedPremium,

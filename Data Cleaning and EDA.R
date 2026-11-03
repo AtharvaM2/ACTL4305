@@ -11,7 +11,7 @@ theme_update(plot.title=element_text(hjust=0.5, size = 16, face = 'bold'))
 theme_update(axis.title = element_text(size = 16))
 theme_update(axis.text = element_text(size = 12))
 
-# 1. Load data --------------------------------------------------------------
+# 1. Load data -----------------------------------------------------------------
 claims_history_2023_2026 <- fread("claims_history_2023_2026.csv",
                                   na.strings = c("", "NA", "N/A", "NULL", "null"))
 renewal_book_2027 <- fread("renewal_book_2027.csv")
@@ -42,7 +42,7 @@ log_issue <- function(issue, variable, n, action, rationale) {
               nrow(issue_log), issue, variable, as.integer(n), action))
 }
 
-# 2. Initial profile --------------------------------------------------------
+# 2. build initial profile -----------------------------------------------------
 claims_profile <- rbindlist(Map(profile_var, claims_history_2023_2026,
                                 names(claims_history_2023_2026)))
 print(claims_profile)
@@ -55,7 +55,7 @@ claims_levels <- rbindlist(lapply(cat_cols, function(v) {
 }))
 print(claims_levels)
 
-# 3a. Data cleaning Claims Dataset  -----------------------------------------
+# 3a. Data cleaning Claims dataset  --------------------------------------------
 data <- copy(claims_history_2023_2026)
 num_cols <- c("DriverAge", "YearsLicensed", "VehAge", "VehValue")
 data[, (num_cols) := lapply(.SD, as.numeric), .SDcols = num_cols]
@@ -98,7 +98,7 @@ for (v in names(canonical)) {
   data[, (v) := after]
 }
 
-# Impossible values become missing
+# change impossible values to missing
 bad_age <- which(!is.na(data$DriverAge) & (data$DriverAge < 17 | data$DriverAge > 100))
 sentinel_age <- sort(unique(data$DriverAge[bad_age]))
 data[bad_age, DriverAge := NA_real_]
@@ -150,7 +150,7 @@ log_issue(sprintf("Negative VehAge (%d rows) treated as missing", n_bad_veh), "V
                   vehicle_age_recovery$n_remaining, vehicle_age_median),
           "Vehicle age increases by one each year within a policy")
 
-# Variables expected to remain constant within a policy
+# Ensure variables remain constant within a policy
 static_vars <- c("VehValue", "AnnualKms", "GaragingLocation", "ExcessChosen",
                  "VehicleType", "VehicleUse", "RiskZone", "Density",
                  "MultiPolicyFlag", "PaymentFrequency")
@@ -195,7 +195,7 @@ for (v in c("VehValue", "AnnualKms", "GaragingLocation", "ExcessChosen")) {
             "These variables are expected to remain constant within a policy")
 }
 
-# Logical consistency checks
+# Consistency checks
 setorder(data, PolicyID, Year)
 checks <- list(
   "ClaimNb == 0 but ClaimAmount > 0" = data[ClaimNb == 0 & ClaimAmount > 0, .N],
@@ -210,7 +210,7 @@ checks <- list(
 consistency <- data.table(Check = names(checks), Failures = unlist(checks))
 print(consistency)
 
-# Unusual values that are retained
+# Check unusual values which are retained
 n_ncd_gt_ten <- data[NCDLevel > TenureYears, .N]
 n_old_veh <- data[VehAge > 25, .N]
 n_zone_cap <- data[Density == max(Density), .N]
@@ -257,7 +257,7 @@ cat("\nData quality log:\n")
 print(issue_log[, .(ID, Issue, Variable, RowsAffected)])
 
 # 3b. Clean renewal books 2027 and 2028 ----------------------------------------
-# Define canonical category levels (from claims history cleaning)
+# Define category levels (from claims history cleaning)
 canonical <- list(
   VehicleType = c("Sedan", "Hatch", "SUV", "Ute", "Sports"),
   RiskZone = c("A_Metro", "B_InnerRegional", "C_OuterRegional", "D_Rural", "E_RemoteRural"),
@@ -345,7 +345,7 @@ renewal_book_2028 <- clean_renewal_book(renewal_book_2028, "2028 Renewal Book")
 
 cat("\n✓ Renewal books cleaned and ready for modelling\n")
 
-# 4. Exploratory data analysis ---------------------------------------------
+# 4. Exploratory data analysis -------------------------------------------------
 missingness_table <- rbindlist(lapply(flag_cols, function(v) {
   missing <- is.na(data_before_imputation[[v]])
   data.table(Variable = v, MissingRows = sum(missing), PctMissing = round(100 * mean(missing), 2),
@@ -402,7 +402,7 @@ categorical_plot <- ggplot(categorical_data, aes(value)) + geom_bar(fill = 'ligh
   labs(title = "Distribution of categorical rating factors", x = NULL, y = "Policy-years")
 print(categorical_plot)
 
-# 5. Frequency and severity by rating factor -------------------------------
+# 5. Frequency and severity by rating factor -----------------------------------
 data[, `:=`(
   DriverAgeBand = cut(DriverAge, c(0, 24, 34, 44, 54, 64, 74, Inf), labels = c("<25", "25-34", "35-44", "45-54", "55-64", "65-74", "75+")),
   YearsLicensedBand = cut(YearsLicensed, c(-Inf, 4, 9, 19, 29, 39, Inf), labels = c("0-4", "5-9", "10-19", "20-29", "30-39", "40+")),
@@ -446,7 +446,7 @@ severity_factor_plot <- ggplot(univariate[!is.na(AvgSeverity)], aes(Key, AvgSeve
   labs(title = "Average claim cost by rating factor", subtitle = "Dashed line shows portfolio average", y = "Average cost per claim")
 print(severity_factor_plot)
 
-# 6. Trends over time -------------------------------------------------------
+# 6. Trends over time ----------------------------------------------------------
 year_summary <- univariate[Variable == "Year", .(Year = as.integer(Level), PolicyYears, Claims,
                                                  Frequency = round(Frequency, 4), AvgSeverity = round(AvgSeverity, 0), LossCost = round(LossCost, 1))]
 print(year_summary)
@@ -476,7 +476,7 @@ trend_plot <- ggplot(melt(year_summary[, .(Year, Frequency, AvgSeverity)], id.va
   labs(title = "Claim frequency and average claim cost by year", x = NULL, y = NULL)
 print(trend_plot)
 
-# 7. Relationships between rating factors ---------------------------------
+# 7. Relationships between rating factors --------------------------------------
 density_plot <- ggplot(data, aes(RiskZone, Density)) + geom_boxplot() + scale_y_log10() +
   labs(title = "Density by RiskZone", x = NULL, y = "People per km2") +
   theme(axis.text.x = element_text(angle = 20, hjust = 1))
@@ -515,7 +515,7 @@ cramers_table <- CJ(A = categorical_variables, B = categorical_variables)
 cramers_table[, V := mapply(function(a, b) cramers_v(data[[a]], data[[b]]), A, B)]
 print(cramers_table[A < B][order(-V)][, .(A, B, V = round(V, 3))][1:15])
 
-# 8. NCD changes after claims ----------------------------------------------
+# 8. NCD changes after claims --------------------------------------------------
 setorder(data, PolicyID, Year)
 data[, `:=`(PrevClaims = shift(ClaimNb), PrevNCD = shift(NCDLevel)), by = PolicyID]
 ncd_change <- data[!is.na(PrevClaims) & PrevNCD > 0 & PrevNCD < 6,
@@ -523,41 +523,28 @@ ncd_change <- data[!is.na(PrevClaims) & PrevNCD > 0 & PrevNCD < 6,
                    keyby = .(PrevClaims = pmin(PrevClaims, 2))]
 print(ncd_change)
 
-#9. Portfolio Persistence (cohort attrition) -------------------------------
+#9. Portfolio Persistence (cohort attrition) -----------------------------------
 cohort_survival <- data[, .(PolicyYears = .N), by = .(FirstYear, Year)]
 cohort_survival[, YearsSinceEntry := Year - FirstYear]
 
-# E.g., policies entering 2023: how many remain in 2024, 2025, 2026?
-# If 80% drop out by year 3, renewal-book pricing has different risk profile
-
-#10. NCD Effectiveness  ---------------------------------------------------
+#10. NCD Effectiveness  --------------------------------------------------------
 data[, FutureClaimNb := shift(ClaimNb, -1, type = "lead"), by = PolicyID]
-
-# Among policies with NCDLevel = 6 this year, what's frequency NEXT year?
-# vs. NCDLevel = 0?
-
 ncd_predictive <- data[!is.na(FutureClaimNb), .(
   NextYearFreq = sum(FutureClaimNb) / .N
 ), by = NCDLevel][order(NCDLevel)]
 
-# If NCDLevel=6 has lower NextYearFreq, NCD is predictive
-# If not, NCD is just a discount with no risk signal
 
-#11. Reinsurance  ----------------------------------------------------------
-
+#11. Reinsurance  --------------------------------------------------------------
 data[ClaimAmount > 50000, .(Count = .N, TotalCost = sum(ClaimAmount), RetentionCost = 50000 * .N)]
-# Do any claims cross a reinsurance retention (e.g., >$50k is reinsured)?
-# If so, your severity model for Task 1 should exclude them or down-weight them
-# (your loaded premium calculation needs to reflect actual insurer cost, not incurred)
 
-#12. Risk Zone Analysis ----------------------------------------------------
+#12. Risk Zone Analysis --------------------------------------------------------
 interaction_check <- data[, .(
   Frequency = sum(ClaimNb) / .N,
   Claims = sum(ClaimNb)
 ), by = .(RiskZone, PaymentFrequency)]
 print(interaction_check)
 
-#13. Retention Rate by Year --------------------------------------------------
+#13. Retention Rate by Year ----------------------------------------------------
 # Add a minimum y-intercept line to show the 50% threshold
 cohort_survival <- data[
   , .(PolicyYears = .N),
@@ -565,9 +552,7 @@ cohort_survival <- data[
 ]
 
 cohort_survival[, YearsSinceEntry := Year - FirstYear]
-
 retention_long <- copy(cohort_survival)
-
 retention_long[
   , SurvivalRate := 100 * PolicyYears /
     PolicyYears[YearsSinceEntry == 0],
@@ -586,7 +571,7 @@ retention_plot <- ggplot(retention_long, aes(YearsSinceEntry, SurvivalRate, colo
 
 print(retention_plot)
 
-#14. Chang in Driver Age Distribution for Renewal Periods ------------------
+#14. Chang in Driver Age Distribution for Renewal Periods ----------------------
 # Define age bands
 age_band_cuts <- c(0, 24, 34, 44, 54, 64, 74, Inf)
 age_band_labels <- c("<25", "25-34", "35-44", "45-54", "55-64", "65-74", "75+")
@@ -616,7 +601,7 @@ ggplot(mix_shift, aes(x = AgeGroup, y = Pct, fill = Dataset)) +
        x = "Age Band", y = "% of Policies", fill = NULL) +
   theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
 
-#15. New Business Premium ----------------------------------------------
+#15. New Business Premium ------------------------------------------------------
 renewal_book_2027[, .(
   MeanPremium = mean(Premium_2026),
   N = .N
