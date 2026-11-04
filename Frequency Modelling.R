@@ -4,7 +4,6 @@ library(ggplot2)
 library(statmod)
 library(tweedie)
 # Execute data cleaning script
-setwd("C:/Users/Ray/Documents/ACTL4305")
 source("Data Cleaning and EDA.R")
 
 # (1) Splitting Out Data ---------------------------------------------------
