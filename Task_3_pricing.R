@@ -24,17 +24,25 @@
 
 library(data.table)
 
-# 0. Setup and 2027 baseline -----------------------------------------------
+# 0. Setup and 2027 baseline ---------------------------------------------------
 if (!exists("data") || !exists("renewal_book_2028")) source("Data Cleaning and EDA.R")
 stopifnot("VehValueBand" %in% names(data))
 
 t3_out <- "task3_outputs"
 dir.create(t3_out, showWarnings = FALSE)
 
-baseline_cols <- c("PolicyID", "LegacyGrossBase_2026", "TechnicalPrice", "LoadedPremium",
-                   "RawRateChange", "EffectiveRateChange", "CapCupLoadedPremium", "FinalPrice")
-export_2027_cols <- unique(c(baseline_cols, "NCDDiscountDollar", "MultiPolicyDiscountDollar",
-                             "LoyaltyDiscountDollar", "TotalDiscountDollar"))
+# Column spec shared by priced_2027.csv and priced_2028.csv (same names, same order)
+PRICED_COLS <- c(
+  "PolicyID", "LegacyGrossBase_2026", "TechnicalPrice", "BaseTechnicalPrice",
+  "LoadedPremium", "RawRateChange", "EffectiveRateChange", "CapCupLoadedPremium",
+  "FinalPrice", "NCDDiscountDollar", "MultiPolicyDiscountDollar",
+  "LoyaltyDiscountDollar", "TotalDiscountDollar"
+)
+
+# Columns Task 3 needs from the 2027 book as its prior-year baseline
+baseline_cols    <- c("PolicyID", "LegacyGrossBase_2026", "TechnicalPrice", "LoadedPremium",
+                      "RawRateChange", "EffectiveRateChange", "CapCupLoadedPremium", "FinalPrice")
+export_2027_cols <- PRICED_COLS
 
 if (exists("book_2027") && all(export_2027_cols %in% names(book_2027))) {
   fwrite(book_2027[, ..export_2027_cols], "priced_2027.csv")
@@ -51,7 +59,7 @@ stopifnot(!anyDuplicated(prior_2027$PolicyID),
           all(is.finite(prior_2027$CapCupLoadedPremium_2027)),
           all(prior_2027$CapCupLoadedPremium_2027 > 0))
 
-# 1. Commercial parameters (identical to Task 2) -----------------------------
+# 1. Commercial parameters (identical to Task 2) -------------------------------
 FIXED_COST     <- 85
 VAR_EXPENSE    <- 0.10
 TARGET_PROFIT  <- 0.08
@@ -247,7 +255,7 @@ portfolio_2028 <- rbind(
 print(portfolio_2028)
 fwrite(portfolio_2028, file.path(t3_out, "02_portfolio_summary_2028.csv"))
 
-# 6. Promise tests through the FULL 2028 waterfall --------------------------------
+# 6. Promise tests through the FULL 2028 waterfall -----------------------------
 # End-to-end counterfactuals: set every policy to a given NCD / tenure / multi-policy
 # status, price it through the whole waterfall, and compare with the same policy at
 # (NCD 0, tenure 0, no multi-policy). 
@@ -355,7 +363,7 @@ cat("\nCost_vs_Priced > 1 means expected claims (with PaymentFrequency) exceed t
 print(pf_impact)
 fwrite(pf_impact, file.path(t3_out, "05_paymentfrequency_impact.csv"))
 
-# 8. Compounding / loyalty-tax diagnostics ---------------------------------------
+# 8. Compounding / loyalty-tax diagnostics -------------------------------------
 status_of <- function(capped, cupped) fcase(capped, "Capped", cupped, "Cupped", default = "Free")
 renewals[, `:=`(
   Capped_2027 = EffectiveRateChange_2027 < RawRateChange_2027 - 1e-9,
@@ -437,7 +445,7 @@ save_base <- function(name, draw, w = 8, h = 5) {
 
 priced_2028[, PolicyLossRatio := 100 * TechnicalPrice / FinalPrice]   # same definition as Task 2
 
-# 1. Raw rate change distribution (Task 2 graph, 2028 vs 2027 base) -------------
+# 1. Raw rate change distribution (Task 2 graph, 2028 vs 2027 base) ------------
 raw_pct <- renewals$RawRateChange * 100
 xr <- quantile(raw_pct, c(0.001, 0.999))
 draw_raw <- function() {
@@ -458,7 +466,7 @@ draw_raw <- function() {
 }
 save_base("01_raw_rate_change_distribution", draw_raw)
 
-# 2. Policy loss ratio distribution (Task 2 graph) --------------------------------
+# 2. Policy loss ratio distribution (Task 2 graph) -----------------------------
 lr_median <- median(priced_2028$PolicyLossRatio)
 draw_lr <- function() {
   hist(pmin(priced_2028$PolicyLossRatio, 250), breaks = 50, col = "salmon", border = "white",
@@ -473,7 +481,7 @@ draw_lr <- function() {
 }
 save_base("02_policy_loss_ratio_distribution", draw_lr)
 
-# 3. Loss ratio by NCD level (Task 2 table as a chart) -----------------------------
+# 3. Loss ratio by NCD level (Task 2 table as a chart) -------------------------
 lr_ncd <- priced_2028[, .(Policies = .N, LossRatio = 100 * sum(TechnicalPrice) / sum(FinalPrice)),
                       keyby = NCDLevel]
 lr_ncd[, Label := factor(paste0("NCD ", NCDLevel, "\n(n=", comma(Policies), ")"),
@@ -489,7 +497,7 @@ p3 <- ggplot(lr_ncd, aes(Label, LossRatio, fill = LossRatio > 100)) +
        x = NULL, y = "Loss ratio (%)")
 save_gg(p3, "03_loss_ratio_by_ncd")
 
-# 4. Loss ratio by cap tier (Task 2 table as a chart) ------------------------------
+# 4. Loss ratio by cap tier (Task 2 table as a chart) --------------------------
 tier_labels <- paste0(c("<= 5%", "5-15%", "15-22.5%", "22.5-30%", "30-60%", "> 60%"),
                       "\n(cap ", round(CAP_VALUES * 100), "%)")
 cap_tier <- rbind(
@@ -554,7 +562,7 @@ p6 <- ggplot(wf) +
          NULL)
 save_gg(p6, "06_waterfall_2028", w = 9)
 
-# 7. Cap / cup status: 2027 -> 2028 (compounding) ----------------------------------
+# 7. Cap / cup status: 2027 -> 2028 (compounding) ------------------------------
 trans <- renewals[, .N, by = .(Status_2027, Status_2028)]
 trans[, `:=`(Status_2027 = factor(Status_2027, levels = rev(status_lvls)),
              Status_2028 = factor(Status_2028, levels = status_lvls))]
@@ -624,11 +632,14 @@ save_gg(p10, "10_paymentfrequency_cost_vs_price", w = 7, h = 5)
 
 cat("\nSaved 10 graphs to ", graph_dir, "/\n", sep = "")
 # 10. Export -------------------------------------------------------------------
-export_2028 <- priced_2028[, .(
-  PolicyID, NewBusinessFlag, TechnicalPrice, LoadedPremium, CapCupLoadedPremium_2027,
-  RawRateChange, EffectiveRateChange, Capped, Cupped, CapCupLoadedPremium,
-  NCDLevel, NCDDiscountDollar, MultiPolicyFlag, MultiPolicyDiscountDollar,
-  TenureYears, LoyaltyDiscountDollar, TotalDiscountDollar, DiscountedPremium,
-  PaymentFrequency, InstalmentDollar, FinalPrice, AmountPerPayment)]
+  # priced_2028.csv uses exactly the same columns, names and order as priced_2027.csv
+  stopifnot(all(PRICED_COLS %in% names(priced_2028)))
+export_2028 <- priced_2028[, ..PRICED_COLS]
+
+# Check the header matches the 2027 file on disk
+hdr_2027 <- names(fread("priced_2027.csv", nrows = 0))
+stopifnot(identical(names(export_2028), hdr_2027))
+
 fwrite(export_2028, "priced_2028.csv")
-cat("\nWrote priced_2028.csv (", nrow(export_2028), " policies) and diagnostics in ", t3_out, "/\n", sep = "")
+cat("\nWrote priced_2028.csv (", nrow(export_2028), " policies, ", ncol(export_2028),
+    " columns) and diagnostics in ", t3_out, "/\n", sep = "")
