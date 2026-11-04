@@ -7,8 +7,7 @@ library(svglite)
 library(scales)
 
 # 1. Load Cleaned Data ----------------------------------------------------
-# Run this script
-source("Data Cleaning and EDA.R")
+# Ensure Data cleaning script is run
 
 
 # 2. Additional Data Cleaning / Prep --------------------------------------
