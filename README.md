@@ -31,20 +31,19 @@ Both files have the same 13 columns in the same order.
 
 **Setup**
 
-1. Put the three input files in one folder: `claims_history_2023_2026.csv`, `renewal_book_2027.csv`, `renewal_book_2028.csv`.
-2. The scripts source the cleaning script by the name **`Data Cleaning and EDA.R`** (with spaces). If your file is named `Data_Cleaning_and_EDA.R`, rename it or edit the `source()` calls.
-3. `Frequency_Modelling.R` and the Task 2 script contain a need `Data Cleaning and EDA.R` to be ran first.
+1. Put the three input files in one folder: `claims_history_2023_2026.csv`, `renewal_book_2027.csv`, `renewal_book_2028.csv` along with all the R scripts.
+2. Note: `Frequency_Modelling.R` and `Task_2_Pricing_Waterfall_Cap___Cup_First_Cleaned.R` scripts require `Data Cleaning and EDA.R` to be ran first.
+3. Note: Run `ACTL4305_EDA_frequency_severity.R` from the data folder. It is self-contained and takes several minutes because of the penalised-model cross-validation. Seeds used: 1, 9, 10 and 4305.
 
-**Run order for the pricing deliverables**
+**Run Order**
 
-1. `Data Cleaning and EDA.R` (sourced automatically by Task 2)
-2. Task 2 script. This produces `priced_2027.csv`.
-3. Task 3 script, **in the same R session**. It needs `data`, `renewal_book_2028` and `book_2027` in memory. If `book_2027` is missing it falls back to reading `priced_2027.csv`.
+1. Run `Data Cleaning and EDA.R` for Task 1(sourced automatically by Task 2)
+2. Run `Frequency_Modelling.R` and `ACTL4305_EDA_frequency_severity.R` for Task 1
+3. Run `Task_2_Pricing_Waterfall_Cap___Cup_First_Cleaned.R` for Task 2. This produces `priced_2027.csv`.
+4. Run `Task_3_pricing.R` **in the same R session** for Task 3. It needs `data`, `renewal_book_2028` and `book_2027` in memory. If `book_2027` is missing it falls back to reading `priced_2027.csv`.
 
-Task 3 re-writes `priced_2027.csv` using the shared 13-column spec, so the 2027 file keeps `BaseTechnicalPrice`. At the end it checks that the `priced_2028.csv` header is identical to the `priced_2027.csv` header.
+Note: Task 3 re-writes `priced_2027.csv` using the shared 13-column spec, so the 2027 file keeps `BaseTechnicalPrice`. At the end it checks that the `priced_2028.csv` header is identical to the `priced_2027.csv` header.
 
-**Modelling and validation (separate path)**
 
-Run `ACTL4305_EDA_frequency_severity.R` from the data folder. It is self-contained and takes several minutes because of the penalised-model cross-validation. Seeds used: 1, 9, 10 and 4305.
 
 ---
