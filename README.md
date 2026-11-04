@@ -41,9 +41,9 @@ To produce the final pricing deliverables, run these scripts **sequentially in t
 3. **`Task 3 Pricing Final.R`**  
    Prices the 2028 book, runs promise tests and PaymentFrequency tests, builds diagnostics, verifies the 13-column match, and exports `priced_2028.csv`.
 
-*Optional Task 1 Modelling Scripts:*
-- **`Task 1 Severity Modelling Final.R`**: Completely self-contained script. Fits all 6 frequency and 6 severity models with regularised CV, evaluates out-of-time holdouts, and exports all Task 1 report metrics.
-- **`Task 1 Frequency Modelling Final.R`**: Run after Step 1 if evaluating alternative Tweedie or XGBoost models.
+*Other Task 1 Modelling Scripts:*
+- **`Task 1 Severity Modelling Final.R`**: Completely self-contained script. Fits all 6 frequency and 6 severity models with regularised CV, evaluates out-of-time holdouts, and exports Task 1 report metrics.
+- **`Task 1 Frequency Modelling Final.R`**: Run after Step 1, evaluates additional Tweedie or XGBoost models.
 
 ---
 
