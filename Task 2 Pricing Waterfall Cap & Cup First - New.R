@@ -1,7 +1,6 @@
 library(data.table)
 
 # 1. Load Cleaned Data ----------------------------------------------------
-setwd("C:/Users/Ray/Documents/ACTL4305")
 source("Data Cleaning and EDA.R")
 
 

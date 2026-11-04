@@ -8,7 +8,6 @@ library(scales)
 
 # 1. Load Cleaned Data ----------------------------------------------------
 # Run this script
-setwd("C:/Users/Ray/Documents/ACTL4305")
 source("Data Cleaning and EDA.R")
 
 
